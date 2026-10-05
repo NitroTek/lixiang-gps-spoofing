@@ -1,116 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:paddingBottom="@dimen/activity_vertical_margin"
-    android:paddingLeft="@dimen/activity_horizontal_margin"
-    android:paddingRight="@dimen/activity_horizontal_margin"
-    android:paddingTop="@dimen/activity_vertical_margin"
-    tools:context="com.github.fakegps.ui.MainActivity">
-
-
-    <LinearLayout
-        android:id="@+id/ll_edit"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/location"
-            android:textSize="20sp"/>
-
-
-        <EditText
-            android:id="@+id/inputLoc"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/loc_input_hint"
-            android:textSize="16sp"/>
-
-
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="24dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/route_title" android:textColor="#152236" android:textSize="30sp" android:textStyle="bold" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" android:text="@string/route_description" android:textSize="17sp" />
+        <TextView android:id="@+id/speed_label" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="32dp" android:textSize="24sp" android:textStyle="bold" />
+        <SeekBar android:id="@+id/speed" android:layout_width="match_parent" android:layout_height="64dp"
+            android:contentDescription="@string/speed_hint" android:max="200" android:progress="90" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/speed_hint" android:textSize="15sp" />
+        <Button android:id="@+id/start_stop" android:layout_width="match_parent" android:layout_height="64dp"
+            android:layout_marginTop="24dp" android:enabled="false" android:text="@string/start" />
+        <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="24dp" android:accessibilityLiveRegion="polite"
+            android:text="@string/loading" android:textSize="18sp" />
+        <ProgressBar android:id="@+id/route_progress" style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" android:max="1000" />
+        <TextView android:id="@+id/progress_label" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:textSize="16sp" />
+        <TextView android:id="@+id/coordinates" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:fontFamily="monospace" android:textSize="16sp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="32dp" android:text="@string/setup_hint" android:textSize="15sp" />
     </LinearLayout>
-
-
-    <LinearLayout
-        android:id="@+id/ll_move_step"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_below="@+id/ll_edit"
-        android:orientation="horizontal">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/move_step"
-            android:textSize="16sp"/>
-        <EditText
-            android:id="@+id/inputStep"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/move_step_hint"
-            android:inputType="numberDecimal"
-            android:textSize="16sp"/>
-
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/tv_bookmark"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_below="@+id/ll_move_step"
-        android:layout_marginBottom="15dp"
-        android:layout_marginTop="15dp"
-        android:text="@string/bookmark"
-        android:textSize="20sp"/>
-
-    <FrameLayout
-        android:id="@+id/fl_list"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_above="@+id/ll_btn_container"
-        android:layout_below="@+id/tv_bookmark"
-    >
-        <ListView
-            android:id="@+id/list_bookmark"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:cacheColorHint="@android:color/transparent"/>
-
-        <TextView
-            android:id="@+id/empty_view"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:text="@string/no_data"
-            android:textSize="26sp"/>
-    </FrameLayout>
-
-    <LinearLayout
-        android:id="@+id/ll_btn_container"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:gravity="center_vertical">
-        <Button
-            android:id="@+id/btn_start"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/btn_start"/>
-
-        <Button
-            android:id="@+id/btn_set_loc"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/btn_set_new_loc"/>
-
-
-    </LinearLayout>
-
-
-</RelativeLayout>
+</ScrollView>

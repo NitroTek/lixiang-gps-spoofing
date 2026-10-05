@@ -1,23 +1,16 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "com.tencent.fakegps"
+    namespace "com.github.fakegps"
     compileSdk 34
 
     defaultConfig {
         applicationId "com.github.fakegps"
         minSdk 21
         targetSdk 34
-        versionCode 2
-        versionName "2.0"
+        versionCode 3
+        versionName "3.0"
     }
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-        }
-    }
-
     signingConfigs {
         debug {
             storeFile file('../keystore.debug.jks')
@@ -38,17 +31,9 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    lint {
-        abortOnError false
-    }
+    sourceSets.test.resources.srcDir 'src/main/assets'
 }
 
 dependencies {
-    implementation fileTree(include: ['*.jar'], dir: 'libs')
     testImplementation 'junit:junit:4.13.2'
-    implementation files('libs/lite-orm-1.9.2.jar')
-    implementation project(':loggerlibrary')
-    implementation 'androidx.appcompat:appcompat:1.7.0'
-    implementation 'androidx.core:core:1.13.1'
-    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
 }

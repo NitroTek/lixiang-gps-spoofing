@@ -1,332 +1,235 @@
 package com.github.fakegps.ui;
 
 import android.Manifest;
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.DialogInterface;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.AppOpsManager;
+import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
 import android.content.Intent;
-import android.content.IntentFilter;
+import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.Process;
 import android.provider.Settings;
-import android.text.TextUtils;
-import android.view.ContextMenu;
-import android.view.Menu;
-import android.view.MenuItem;
-import android.view.View;
-import android.widget.AdapterView;
 import android.widget.Button;
-import android.widget.EditText;
-import android.widget.ListView;
+import android.widget.ProgressBar;
+import android.widget.SeekBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+import com.github.fakegps.FakeLocationService;
+import com.github.fakegps.R;
+import com.github.fakegps.route.LoopRoute;
+import com.github.fakegps.route.RoutePlayback;
 
-import com.github.fakegps.BroadcastEvent;
-import com.github.fakegps.DbUtils;
-import com.github.fakegps.FakeGpsApp;
-import com.github.fakegps.FakeGpsUtils;
-import com.github.fakegps.JoyStickManager;
-import com.github.fakegps.model.LocBookmark;
-import com.github.fakegps.model.LocPoint;
-import com.tencent.fakegps.R;
+/** One screen, one route, one speed control. */
+public final class MainActivity extends Activity {
+    private static final int REQUEST_LOCATION = 1;
+    private static final int REQUEST_NOTIFICATIONS = 2;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private FakeLocationService service;
+    private boolean bound;
+    private boolean pendingStart;
+    private SeekBar speed;
+    private TextView speedLabel;
+    private TextView status;
+    private TextView progressLabel;
+    private TextView coordinates;
+    private ProgressBar routeProgress;
+    private Button startStop;
 
-import java.util.ArrayList;
+    private final ServiceConnection connection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder binder) {
+            service = ((FakeLocationService.LocalBinder) binder).getService();
+            speed.setProgress(service.getSpeedKmh());
+            updateScreen();
+        }
 
-public class MainActivity extends AppCompatActivity implements View.OnClickListener {
-    private final double LAT_DEFAULT = 37.802406;
-    private final double LON_DEFAULT = -122.401779;
-
-    private static final int REQUEST_CODE_OVERLAY = 2001;
-    private static final int REQUEST_CODE_LOCATION = 2002;
-    private static final int REQUEST_CODE_NOTIFICATION = 2003;
-
-    public static final int DELETE_ID = 1001;
-
-    private EditText mLocEditText;
-    private EditText mMoveStepEditText;
-    private ListView mListView;
-    private Button mBtnStart;
-    private Button mBtnSetNew;
-    private BookmarkAdapter mAdapter;
-
-    // Pending start params - saved while requesting permissions
-    private LocPoint mPendingStartPoint;
-    private double mPendingStartStep;
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            service = null;
+            startStop.setEnabled(false);
+            status.setText(R.string.service_error);
+        }
+    };
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        //location input
-        mLocEditText = (EditText) findViewById(R.id.inputLoc);
-        LocPoint currentLocPoint = JoyStickManager.get().getCurrentLocPoint();
-        if (currentLocPoint != null) {
-            mLocEditText.setText(currentLocPoint.toString());
-        } else {
-            String lastLocPoint = DbUtils.getLastLocPoint(this);
-            if (!TextUtils.isEmpty(lastLocPoint)) {
-                mLocEditText.setText(lastLocPoint);
-            } else {
-                mLocEditText.setText(new LocPoint(LAT_DEFAULT, LON_DEFAULT).toString());
+        speed = findViewById(R.id.speed);
+        speedLabel = findViewById(R.id.speed_label);
+        status = findViewById(R.id.status);
+        progressLabel = findViewById(R.id.progress_label);
+        coordinates = findViewById(R.id.coordinates);
+        routeProgress = findViewById(R.id.route_progress);
+        startStop = findViewById(R.id.start_stop);
+        int savedSpeed = getSharedPreferences(FakeLocationService.PREFS, MODE_PRIVATE)
+                .getInt(FakeLocationService.PREF_SPEED, RoutePlayback.DEFAULT_SPEED_KMH);
+        speed.setProgress(savedSpeed);
+        speedLabel.setText(getString(R.string.speed_label, speed.getProgress()));
+        speed.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int value, boolean fromUser) {
+                speedLabel.setText(getString(R.string.speed_label, value));
+                if (fromUser) {
+                    if (service != null) service.setSpeedKmh(value);
+                    else getSharedPreferences(FakeLocationService.PREFS, MODE_PRIVATE)
+                            .edit().putInt(FakeLocationService.PREF_SPEED, value).apply();
+                    updateScreen();
+                }
             }
-        }
 
-        mLocEditText.setSelection(mLocEditText.getText().length());
-
-        //each move step delta
-        mMoveStepEditText = (EditText) findViewById(R.id.inputStep);
-        double currentMoveStep = JoyStickManager.get().getMoveStep();
-        mMoveStepEditText.setText(String.valueOf(currentMoveStep));
-
-        mListView = (ListView) findViewById(R.id.list_bookmark);
-
-        mBtnStart = (Button) findViewById(R.id.btn_start);
-        mBtnStart.setOnClickListener(this);
-        updateBtnStart();
-
-        mBtnSetNew = (Button) findViewById(R.id.btn_set_loc);
-        mBtnSetNew.setOnClickListener(this);
-        updateBtnSetNew();
-
-        initListView();
-
-        registerBroadcastReceiver();
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+        startStop.setOnClickListener(view -> {
+            if (service == null) return;
+            if (service.isRunning()) {
+                pendingStart = false;
+                service.stopRoute();
+                updateScreen();
+            } else {
+                pendingStart = true;
+                checkPermissionsAndStart();
+            }
+        });
     }
 
     @Override
-    public void onClick(View view) {
-        double step = FakeGpsUtils.getMoveStepFromInput(this, mMoveStepEditText);
-        LocPoint point = FakeGpsUtils.getLocPointFromInput(this, mLocEditText);
+    protected void onStart() {
+        super.onStart();
+        bound = bindService(new Intent(this, FakeLocationService.class), connection, BIND_AUTO_CREATE);
+        handler.post(refresh);
+    }
 
-        int id = view.getId();
-        if (id == R.id.btn_start) {
-            if (!JoyStickManager.get().isStarted()) {
-                if (point == null) {
-                    Toast.makeText(this, "Input is not valid!", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                // Save pending params and start permission check chain
-                mPendingStartPoint = point;
-                mPendingStartStep = step;
-                checkPermissionsAndStart();
-            } else {
-                LocPoint currentLocPoint = JoyStickManager.get().getCurrentLocPoint();
-                if (currentLocPoint != null) {
-                    DbUtils.saveLastLocPoint(this, currentLocPoint);
-                }
-                JoyStickManager.get().stop();
-                finish();
-            }
-            updateBtnStart();
-            updateBtnSetNew();
-        } else if (id == R.id.btn_set_loc) {
-            if (step > 0 && point != null) {
-                JoyStickManager.get().setMoveStep(step);
-                JoyStickManager.get().jumpToLocation(point);
-            } else {
-                Toast.makeText(this, "Input is not valid!", Toast.LENGTH_SHORT).show();
-            }
+    @Override
+    protected void onStop() {
+        handler.removeCallbacks(refresh);
+        if (bound) unbindService(connection);
+        bound = false;
+        service = null;
+        super.onStop();
+    }
+
+    private final Runnable refresh = new Runnable() {
+        @Override
+        public void run() {
+            updateScreen();
+            handler.postDelayed(this, 500);
+        }
+    };
+
+    private void updateScreen() {
+        if (service == null) return;
+        boolean running = service.isRunning();
+        startStop.setEnabled(service.isRouteLoaded());
+        startStop.setText(running ? R.string.stop : R.string.start);
+        String error = service.getError();
+        if (error != null) status.setText(error);
+        else status.setText(!running ? R.string.idle
+                : service.getSpeedKmh() == 0 ? R.string.paused : R.string.running);
+        LoopRoute.Position position = service.getPosition();
+        if (position != null) {
+            double length = service.getRouteLengthMeters();
+            routeProgress.setProgress((int) (position.offsetMeters / length * 1000));
+            progressLabel.setText(getString(R.string.progress, service.getCompletedLaps() + 1,
+                    position.offsetMeters / 1000, length / 1000));
+            coordinates.setText(getString(R.string.coordinates, position.latitude, position.longitude));
         }
     }
 
-    /**
-     * Checks all required permissions in order:
-     * 1. Location permission (required for foreground service with location type)
-     * 2. Notification permission (Android 13+)
-     * 3. Overlay permission (for floating joystick)
-     * Then starts the service if all granted.
-     */
+    private boolean hasLocationPermission() {
+        return Build.VERSION.SDK_INT < 23
+                || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
     private void checkPermissionsAndStart() {
-        // Step 1: Check location permission
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    REQUEST_CODE_LOCATION);
+        if (!pendingStart) return;
+        SharedPreferences prefs = getSharedPreferences(FakeLocationService.PREFS, MODE_PRIVATE);
+        if (!hasLocationPermission()) {
+            if (prefs.getBoolean("location_asked", false)
+                    && !shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION)
+                    && !shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+                pendingStart = false;
+                showSettingsDialog(R.string.location_denied, R.string.permission_settings,
+                        new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:" + getPackageName())));
+                return;
+            }
+            prefs.edit().putBoolean("location_asked", true).apply();
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION}, REQUEST_LOCATION);
             return;
         }
-
-        // Step 2: Check notification permission (Android 13+)
-        if (Build.VERSION.SDK_INT >= 33) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                    != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.POST_NOTIFICATIONS},
-                        REQUEST_CODE_NOTIFICATION);
-                return;
-            }
+        LocationManager locations = (LocationManager) getSystemService(LOCATION_SERVICE);
+        boolean locationEnabled = Build.VERSION.SDK_INT >= 28 ? locations.isLocationEnabled()
+                : locations.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                || locations.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+        if (!locationEnabled) {
+            pendingStart = false;
+            showSettingsDialog(R.string.location_title, R.string.location_hint,
+                    new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+            return;
         }
-
-        // Step 3: Check overlay permission
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!Settings.canDrawOverlays(this)) {
-                new AlertDialog.Builder(this)
-                        .setTitle("需要悬浮窗权限")
-                        .setMessage("FakeGPS 需要悬浮窗权限来显示操控手柄。请在接下来的设置页面中允许此权限。")
-                        .setPositiveButton("去设置", new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int which) {
-                                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                        Uri.parse("package:" + getPackageName()));
-                                startActivityForResult(intent, REQUEST_CODE_OVERLAY);
-                            }
-                        })
-                        .setNegativeButton("取消", null)
-                        .show();
-                return;
-            }
+        AppOpsManager appOps = (AppOpsManager) getSystemService(APP_OPS_SERVICE);
+        if (appOps.checkOpNoThrow(AppOpsManager.OPSTR_MOCK_LOCATION, Process.myUid(),
+                getPackageName()) != AppOpsManager.MODE_ALLOWED) {
+            pendingStart = false;
+            showSettingsDialog(R.string.mock_title, R.string.setup_hint,
+                    new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS));
+            return;
         }
-
-        // All permissions granted, start!
-        doStart();
-    }
-
-    private void doStart() {
-        if (mPendingStartPoint != null) {
-            JoyStickManager.get().setMoveStep(mPendingStartStep);
-            JoyStickManager.get().start(mPendingStartPoint);
-            mPendingStartPoint = null;
-            finish();
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                && !prefs.getBoolean("notifications_asked", false)) {
+            prefs.edit().putBoolean("notifications_asked", true).apply();
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
+            return;
+        }
+        pendingStart = false;
+        Intent intent = new Intent(this, FakeLocationService.class)
+                .setAction(FakeLocationService.ACTION_START)
+                .putExtra(FakeLocationService.EXTRA_SPEED, speed.getProgress());
+        try {
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
+            else startService(intent);
+        } catch (RuntimeException e) {
+            Toast.makeText(this, R.string.service_error, Toast.LENGTH_LONG).show();
         }
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_CODE_LOCATION) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Location granted, continue checking next permission
-                checkPermissionsAndStart();
-            } else {
-                Toast.makeText(this, "需要位置权限才能模拟 GPS", Toast.LENGTH_LONG).show();
-            }
-        } else if (requestCode == REQUEST_CODE_NOTIFICATION) {
-            // Notification permission is optional, continue regardless
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode == REQUEST_LOCATION && !hasLocationPermission()) {
+            pendingStart = false;
+            Toast.makeText(this, R.string.location_denied, Toast.LENGTH_LONG).show();
+        } else if (requestCode == REQUEST_LOCATION || requestCode == REQUEST_NOTIFICATIONS) {
+            // Denying notifications must not loop the permission dialog or block playback.
             checkPermissionsAndStart();
         }
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_CODE_OVERLAY) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
-                // Overlay granted, continue the chain
-                checkPermissionsAndStart();
-            } else {
-                Toast.makeText(this, "悬浮窗权限未授予", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    private void updateBtnStart() {
-        if (JoyStickManager.get().isStarted()) {
-            mBtnStart.setText(R.string.btn_stop);
-        } else {
-            mBtnStart.setText(R.string.btn_start);
-        }
-    }
-
-    private void updateBtnSetNew() {
-        if (JoyStickManager.get().isStarted()) {
-            mBtnSetNew.setEnabled(true);
-        } else {
-            mBtnSetNew.setEnabled(false);
-        }
-    }
-
-    private void initListView() {
-        mAdapter = new BookmarkAdapter(this);
-        ArrayList<LocBookmark> allBookmark = DbUtils.getAllBookmark();
-        mAdapter.setLocBookmarkList(allBookmark);
-        mListView.setAdapter(mAdapter);
-
-        View emptyView = findViewById(R.id.empty_view);
-        mListView.setEmptyView(emptyView);
-
-        mListView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                LocPoint locPoint = mAdapter.getItem(position).getLocPoint();
-                mLocEditText.setText(locPoint != null ? locPoint.toString() : "");
-            }
-        });
-
-        registerForContextMenu(mListView);
-
-    }
-
-    @Override
-    public void onCreateContextMenu(ContextMenu menu, View v, ContextMenu.ContextMenuInfo menuInfo) {
-        menu.add(Menu.NONE, DELETE_ID, Menu.NONE, R.string.menu_delete);
-        super.onCreateContextMenu(menu, v, menuInfo);
-    }
-
-    public boolean onContextItemSelected(MenuItem item) {
-        if (item.getItemId() == DELETE_ID) {
-            AdapterView.AdapterContextMenuInfo info = (AdapterView.AdapterContextMenuInfo) item.getMenuInfo();
-            delete(info.position);
-            return true;
-        }
-        return super.onContextItemSelected(item);
-    }
-
-    private void delete(final int position) {
-        if (position < 0) return;
-        final LocBookmark bookmark = mAdapter.getItem(position);
-        new AlertDialog.Builder(this)
-                .setTitle("Delete " + bookmark.toString())
-                .setPositiveButton("OK", new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
-                        DbUtils.deleteBookmark(bookmark);
+    private void showSettingsDialog(int title, int message, Intent settings) {
+        new AlertDialog.Builder(this).setTitle(title).setMessage(message)
+                .setPositiveButton(R.string.settings, (dialog, which) -> {
+                    try {
+                        startActivity(settings);
+                    } catch (ActivityNotFoundException e) {
+                        Toast.makeText(this, R.string.settings_unavailable, Toast.LENGTH_LONG).show();
                     }
                 })
-                .setNegativeButton("Cancel", null)
-                .show();
+                .setNegativeButton(android.R.string.cancel, null).show();
     }
-
-    private void registerBroadcastReceiver() {
-        IntentFilter intentFilter = new IntentFilter(BroadcastEvent.BookMark.ACTION_BOOK_MARK_UPDATE);
-        LocalBroadcastManager.getInstance(FakeGpsApp.get()).registerReceiver(mBroadcastReceiver, intentFilter);
-    }
-
-    private void unregisterBroadcastReceiver() {
-        LocalBroadcastManager.getInstance(FakeGpsApp.get()).unregisterReceiver(mBroadcastReceiver);
-    }
-
-    private BroadcastReceiver mBroadcastReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
-            if (BroadcastEvent.BookMark.ACTION_BOOK_MARK_UPDATE.equals(action)) {
-                ArrayList<LocBookmark> allBookmark = DbUtils.getAllBookmark();
-                mAdapter.setLocBookmarkList(allBookmark);
-            }
-        }
-    };
-
-
-    @Override
-    protected void onDestroy() {
-        unregisterBroadcastReceiver();
-        super.onDestroy();
-    }
-
-    public static void startPage(Context context) {
-        Intent intent = new Intent(context, MainActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        context.startActivity(intent);
-    }
-
-
 }

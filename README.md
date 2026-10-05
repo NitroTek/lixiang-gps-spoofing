@@ -1,61 +1,60 @@
-# FakeGPS
+# FakeGPS G30
 
-[中文Readme](https://github.com/xiangtailiang/FakeGPS/blob/master/README_CN.md)
+Минимальное Android-приложение для повторяющейся подмены GPS по встроенному кольцу G30.
 
-FakeGPS is a GPS device simulator. GPS location signal keep output according to the given coordinates. By the direction keys on the joystick, the user can simulate walking on the map.
+- Одна кнопка запуска и остановки.
+- Скорость 0–200 км/ч, по умолчанию 90 км/ч; изменяется во время движения.
+- 0 км/ч удерживает текущую координату, продолжая публикацию GPS.
+- После завершения круга движение продолжается с начала без разрыва координат.
+- Фоновая работа, уведомление с кнопкой остановки, работа с выключенным экраном.
+- Без интернета, закладок, джойстика, плавающих окон и ручного ввода маршрута.
 
-## Features
-- Simulate the real GPS devices, output GPS location per second.
-- Have two modes to set the new location: **Jump Mode** and **Flight Mode**. **Jump Mode**: jump to the new location in second. **Flight Mode**: fly to the new location according to the given time by linear interpolation.
-- With a global floating joystick, the direction button will do a certain offset at the current position (via Move Step, degrees unit). Click to move a step, long press will move continuously.
-- Bookmarks support. In the Bookmarks List, tap to use it, long press to Delete. Long Press Bookmark button on the joystick to copy the current coordinates to the clipboard, make it easy to share it with other people.
+## Маршрут
 
-## Screenshots
+Встроен в `app/src/main/assets/g30-loop.gpx`: 173 точки, около 57,07 км.
+Старт и финиш: **43.039292, 90.718589** — исходная точка, привязанная к G30.
+Маршрут проходит через **43.138037, 90.894309**, возвращается по другой стороне
+G30 через западное соединение и замыкается на старте.
 
-![Screenshot_1](./screenshot/Screenshot_1.png)
+Источник: расчёт OSRM / OpenStreetMap, полученный 05.10.2026.
+Это геометрия дорог из карты; доступность съездов в реальном времени не проверена.
+Сервисная оценка 42 минуты относится к обычному автомобильному маршруту.
+Приложение движется с выбранной постоянной скоростью, в том числе на съездах;
+при 90 км/ч полный круг занимает примерно 38 минут.
 
-![Screenshot_2](./screenshot/Screenshot_2.png)
+## Запуск
 
-![Screenshot_3](./screenshot/Screenshot_3.png)
+1. Установить APK (Android 5.0 / API 21 или новее).
+2. Включить геолокацию Android.
+3. В настройках разработчика выбрать **FakeGPS G30** как приложение для
+   фиктивных местоположений.
+4. Открыть приложение, выбрать скорость и нажать **Запустить маршрут**.
+5. Разрешить доступ к местоположению. Разрешение на уведомления желательно:
+   оно позволяет видеть фоновую работу и остановить её из уведомления.
+6. Открыть нужное приложение навигации: оно получает подменённые GPS-координаты.
 
-## Download
-[FakeGPS V2.0](https://github.com/xiangtailiang/FakeGPS/releases/tag/2.0)
+Кнопка **Остановить** снимает подмену и возвращает системные провайдеры.
+Следующий запуск начинается с начала маршрута. Закрытие экрана приложения
+и поворот устройства не останавливают активный маршрут.
+После принудительной остановки или уничтожения процесса системой запускать
+маршрут нужно вручную. Приложение не запускается при загрузке устройства.
+Некоторые приложения и прошивки игнорируют фиктивные местоположения.
 
-## Requirements
-- Android 5.0 (API 21) or above
-- Tested on Android 16 (API 36)
+## Сборка и проверки
 
-## Installation
+Нужны JDK 17 (или совместимый с Gradle 8.11.1 JDK 21) и Android SDK 34.
 
-**No root required!** FakeGPS v2.0 uses the standard Android Mock Location API.
-
-1. Install the APK on your device.
-2. Enable **Developer Options** on your device (Settings > About Phone > Tap Build Number 7 times).
-3. Go to **Settings > Developer Options > Select mock location app** and choose **FakeGPS**.
-4. Launch FakeGPS, enter coordinates, and click **Start**.
-5. The app will request Location, Notification, and Overlay permissions on first launch. Grant them all.
-6. The floating joystick will appear. Open a Maps app (Google Maps, etc.) to verify the mock location.
-
-## Changes in v2.0
-- **No root required** — uses standard `addTestProvider` / `setTestProviderLocation` API instead of hidden `ILocationManager`.
-- **Supports Android 5.0 ~ 16** (API 21 ~ 36).
-- Migrated from Support Library to **AndroidX**.
-- Added **Foreground Service** with notification for reliable background operation on Android 8.0+.
-- Floating joystick uses `TYPE_APPLICATION_OVERLAY` for Android 8.0+ compatibility.
-- Runtime permission requests for Location, Notification (Android 13+), and Overlay.
-- Scoped Storage compatible logging.
-- Updated build toolchain: Gradle 8.11.1, AGP 8.7.3, Java 17.
-
-## Build
-
-```bash
-./gradlew assembleDebug
+```powershell
+.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
 
-APK output: `app/build/outputs/apk/debug/FakeGPS_v2.0.apk`
+APK: `app/build/outputs/apk/debug/FakeGPS_v3.0.apk`.
 
-## Contribute
-If you would like to contribute code to FakeGPS, you can do so through GitHub by forking the repository and sending a pull request.
+Тесты проверяют движение по расстоянию и времени, смену скорости, нулевую
+скорость, прохождение нескольких кругов и встроенный GPX. Проверка подмены GPS
+на устройстве: координата меняется вдоль дороги, поле скорости соответствует
+ползунку, движение продолжается в фоне, после остановки подмена снимается.
 
-## License
-[The MIT License (MIT)](http://opensource.org/licenses/MIT)
+## Лицензия
+
+MIT, как в исходном FakeGPS.
