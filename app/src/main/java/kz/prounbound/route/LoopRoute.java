@@ -1,4 +1,4 @@
-package com.github.fakegps.route;
+package kz.prounbound.route;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -36,6 +36,15 @@ public final class LoopRoute {
 
     public double lengthMeters() {
         return distances[distances.length - 1];
+    }
+
+    public static Position stationaryAt(double latitude, double longitude) {
+        if (Double.isNaN(latitude) || Double.isInfinite(latitude)
+                || Double.isNaN(longitude) || Double.isInfinite(longitude)
+                || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+            throw new IllegalArgumentException("Invalid stationary coordinate");
+        }
+        return new Position(latitude, longitude, 0, 0);
     }
 
     public Position positionAt(double traveledMeters) {

@@ -1,4 +1,4 @@
-package com.github.fakegps;
+package kz.prounbound;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -16,18 +16,27 @@ import android.os.PowerManager;
 import android.os.SystemClock;
 import android.util.Log;
 
-import com.github.fakegps.route.LoopRoute;
-import com.github.fakegps.route.RouteLoader;
-import com.github.fakegps.route.RoutePlayback;
-import com.github.fakegps.ui.MainActivity;
+import kz.prounbound.route.LoopRoute;
+import kz.prounbound.route.RouteLoader;
+import kz.prounbound.route.RoutePlayback;
+import kz.prounbound.ui.MainActivity;
+import kz.prounbound.spoofing.ChinaRegion;
+import kz.prounbound.spoofing.SpoofingSession;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.Random;
 
-/** The service owns playback; closing or rotating the activity never stops the route. */
+/** The service owns session; closing or rotating the activity never stops the route. */
 public final class FakeLocationService extends Service {
-    public static final String ACTION_START = "com.github.fakegps.START";
-    public static final String ACTION_STOP = "com.github.fakegps.STOP";
+    public static final String ACTION_START = "kz.prounbound.START";
+    public static final String ACTION_STOP = "kz.prounbound.STOP";
     public static final String EXTRA_SPEED = "speed_kmh";
+    public static final String EXTRA_MODE = "mode";
+    public static final String EXTRA_TIMER_SECONDS = "timer_seconds";
+    public static final String PREF_MODE = "mode";
+    public static final String PREF_TIMER_ENABLED = "timer_enabled";
+    public static final String PREF_TIMER_SECONDS = "timer_seconds";
     public static final String PREFS = "g30";
     public static final String PREF_SPEED = "speed_kmh";
     private static final String CHANNEL_ID = "g30_route";
@@ -37,7 +46,13 @@ public final class FakeLocationService extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final LocalBinder binder = new LocalBinder();
     private LoopRoute route;
-    private RoutePlayback playback;
+    private SpoofingSession session;
+    private ChinaRegion china;
+    private int mode;
+    private boolean timerEnabled;
+    private int timerSeconds;
+    private boolean timerFinished;
+    private int lastNotificationSeconds = -2;
     private MockLocationPublisher publisher;
     private PowerManager.WakeLock wakeLock;
     private long wakeLockRenewedAt;
@@ -57,12 +72,22 @@ public final class FakeLocationService extends Service {
         speedKmh = Math.max(0, Math.min(RoutePlayback.MAX_SPEED_KMH,
                 getSharedPreferences(PREFS, MODE_PRIVATE)
                         .getInt(PREF_SPEED, RoutePlayback.DEFAULT_SPEED_KMH)));
+        mode = getSharedPreferences(PREFS, MODE_PRIVATE).getInt(PREF_MODE, SpoofingSession.MODE_ROUTE);
+        if (!SpoofingSession.isValidMode(mode)) mode = SpoofingSession.MODE_ROUTE;
+        timerEnabled = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_TIMER_ENABLED, false);
+        timerSeconds = Math.max(1, Math.min(SpoofingSession.MAX_TIMER_SECONDS,
+                getSharedPreferences(PREFS, MODE_PRIVATE).getInt(PREF_TIMER_SECONDS, 60)));
         publisher = new MockLocationPublisher(this);
         try {
             route = RouteLoader.load(getAssets());
         } catch (IOException e) {
-            error = getString(R.string.route_error);
-            Log.e("FakeGPS", error, e);
+            Log.e("ProUnbound", "Cannot load route", e);
+        }
+        try (InputStreamReader input = new InputStreamReader(
+                getAssets().open("china-mainland.csv"), "UTF-8")) {
+            china = ChinaRegion.load(input);
+        } catch (IOException e) {
+            Log.e("ProUnbound", "Cannot load China boundary", e);
         }
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
@@ -77,7 +102,9 @@ public final class FakeLocationService extends Service {
         if (intent == null || ACTION_STOP.equals(intent.getAction())) {
             stopRoute();
         } else if (ACTION_START.equals(intent.getAction())) {
-            startRoute(intent.getIntExtra(EXTRA_SPEED, speedKmh));
+            startRoute(intent.getIntExtra(EXTRA_SPEED, speedKmh),
+                    intent.getIntExtra(EXTRA_MODE, mode),
+                    intent.getIntExtra(EXTRA_TIMER_SECONDS, timerEnabled ? timerSeconds : 0));
         } else {
             stopSelf(startId);
         }
@@ -90,12 +117,16 @@ public final class FakeLocationService extends Service {
         return binder;
     }
 
-    private void startRoute(int requestedSpeed) {
+    private void startRoute(int requestedSpeed, int requestedMode, int requestedTimerSeconds) {
         if (running) {
             setSpeedKmh(requestedSpeed);
             return;
         }
+        configureMode(requestedMode);
+        configureTimer(requestedTimerSeconds > 0,
+                requestedTimerSeconds > 0 ? requestedTimerSeconds : timerSeconds);
         error = null;
+        timerFinished = false;
         try {
             setSpeedKmh(requestedSpeed);
             if (Build.VERSION.SDK_INT >= 29) {
@@ -104,18 +135,22 @@ public final class FakeLocationService extends Service {
             } else {
                 startForeground(NOTIFICATION_ID, buildNotification());
             }
-            if (route == null) throw new IOException("Embedded route is unavailable");
+            if (!isReady()) throw new IOException("Selected mode data is unavailable");
             publisher.start();
             PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
-            wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FakeGPS:G30");
+            wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ProUnbound:Spoofing");
             wakeLock.setReferenceCounted(false);
             wakeLock.acquire(60_000);
             wakeLockRenewedAt = SystemClock.elapsedRealtime();
-            playback = new RoutePlayback(route, speedKmh, SystemClock.elapsedRealtime());
+            long now = SystemClock.elapsedRealtime();
+            session = new SpoofingSession(route, china, mode, speedKmh,
+                    timerEnabled ? timerSeconds : 0, new Random(), now);
             running = true;
+            lastNotificationSeconds = -2;
             handler.post(updateLocation);
+            if (session.hasTimer()) handler.postDelayed(autoStop, session.remainingMillis(now));
         } catch (IOException e) {
-            fail(R.string.route_error, e);
+            fail(mode == SpoofingSession.MODE_ROUTE ? R.string.route_error : R.string.china_error, e);
         } catch (SecurityException e) {
             fail(R.string.mock_error, e);
         } catch (RuntimeException e) {
@@ -125,15 +160,15 @@ public final class FakeLocationService extends Service {
 
     public void setSpeedKmh(int value) {
         if (value < 0 || value > RoutePlayback.MAX_SPEED_KMH) return;
-        if (running) playback.setSpeedKmh(value, SystemClock.elapsedRealtime());
+        if (running) checkAutoStop();
+        if (running) session.setSpeedKmh(value, SystemClock.elapsedRealtime());
         speedKmh = value;
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(PREF_SPEED, value).apply();
         if (running) {
             try {
                 // The reported GPS speed changes immediately, without resetting position.
-                publisher.publish(playback.position(), speedKmh);
-                ((NotificationManager) getSystemService(NOTIFICATION_SERVICE))
-                        .notify(NOTIFICATION_ID, buildNotification());
+                publisher.publish(session.position(), session.speedKmh());
+                updateNotification();
             } catch (RuntimeException e) {
                 fail(R.string.mock_error, e);
             }
@@ -145,14 +180,16 @@ public final class FakeLocationService extends Service {
         public void run() {
             if (!running) return;
             try {
+                if (checkAutoStop()) return;
                 long now = SystemClock.elapsedRealtime();
-                // Renew during playback; a stalled update loop releases the lock automatically.
+                // Renew during session; a stalled update loop releases the lock automatically.
                 if (now - wakeLockRenewedAt >= 30_000) {
                     wakeLock.acquire(60_000);
                     wakeLockRenewedAt = now;
                 }
-                playback.advanceTo(now);
-                publisher.publish(playback.position(), speedKmh);
+                session.advanceTo(now);
+                publisher.publish(session.position(), session.speedKmh());
+                if (getRemainingTimerSeconds() != lastNotificationSeconds) updateNotification();
                 handler.postDelayed(this, UPDATE_INTERVAL_MS);
             } catch (RuntimeException e) {
                 fail(R.string.mock_error, e);
@@ -160,9 +197,63 @@ public final class FakeLocationService extends Service {
         }
     };
 
+    private boolean checkAutoStop() {
+        if (running && session.isExpired(SystemClock.elapsedRealtime())) {
+            stopRoute();
+            timerFinished = true;
+            return true;
+        }
+        return false;
+    }
+
+    private final Runnable autoStop = new Runnable() {
+        @Override public void run() {
+            if (!running || !session.hasTimer()) return;
+            if (!checkAutoStop()) {
+                handler.postDelayed(this, Math.max(1, session.remainingMillis(SystemClock.elapsedRealtime())));
+            }
+        }
+    };
+
+    private void updateNotification() {
+        lastNotificationSeconds = getRemainingTimerSeconds();
+        ((NotificationManager) getSystemService(NOTIFICATION_SERVICE))
+                .notify(NOTIFICATION_ID, buildNotification());
+    }
+
+    public void configureMode(int value) {
+        if (running || !SpoofingSession.isValidMode(value)) return;
+        if (mode != value) {
+            session = null;
+            timerFinished = false;
+            error = null;
+        }
+        mode = value;
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(PREF_MODE, value).apply();
+    }
+
+    public void configureTimer(boolean enabled, int seconds) {
+        if (running || seconds < 1 || seconds > SpoofingSession.MAX_TIMER_SECONDS) return;
+        timerEnabled = enabled;
+        timerSeconds = seconds;
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean(PREF_TIMER_ENABLED, enabled).putInt(PREF_TIMER_SECONDS, seconds).apply();
+    }
+
+    public int getMode() { return mode; }
+    public boolean isTimerEnabled() { return timerEnabled; }
+    public int getTimerSeconds() { return timerSeconds; }
+    public boolean isTimerFinished() { return timerFinished; }
+    public int getRemainingTimerSeconds() {
+        return running && session.hasTimer()
+                ? (int) ((session.remainingMillis(SystemClock.elapsedRealtime()) + 999) / 1000) : -1;
+    }
+
     public void stopRoute() {
         running = false;
+        timerFinished = false;
         handler.removeCallbacks(updateLocation);
+        handler.removeCallbacks(autoStop);
         if (publisher != null) publisher.stop();
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         wakeLock = null;
@@ -172,7 +263,7 @@ public final class FakeLocationService extends Service {
 
     private void fail(int message, Exception exception) {
         error = getString(message);
-        Log.e("FakeGPS", error, exception);
+        Log.e("ProUnbound", error, exception);
         stopRoute();
     }
 
@@ -180,8 +271,8 @@ public final class FakeLocationService extends Service {
         return running;
     }
 
-    public boolean isRouteLoaded() {
-        return route != null;
+    public boolean isReady() {
+        return mode == SpoofingSession.MODE_ROUTE ? route != null : china != null;
     }
 
     public int getSpeedKmh() {
@@ -189,7 +280,9 @@ public final class FakeLocationService extends Service {
     }
 
     public String getError() {
-        return error;
+        if (error != null) return error;
+        return isReady() ? null : getString(mode == SpoofingSession.MODE_ROUTE
+                ? R.string.route_error : R.string.china_error);
     }
 
     public double getRouteLengthMeters() {
@@ -197,11 +290,12 @@ public final class FakeLocationService extends Service {
     }
 
     public long getCompletedLaps() {
-        return playback == null ? 0 : playback.completedLaps();
+        return session == null ? 0 : session.completedLaps();
     }
 
     public LoopRoute.Position getPosition() {
-        return playback != null ? playback.position() : route != null ? route.positionAt(0) : null;
+        return session != null ? session.position() : mode == SpoofingSession.MODE_ROUTE && route != null
+                ? route.positionAt(0) : null;
     }
 
     private Notification buildNotification() {
@@ -214,8 +308,12 @@ public final class FakeLocationService extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | immutable);
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(this, CHANNEL_ID) : new Notification.Builder(this);
+        String text = mode == SpoofingSession.MODE_ROUTE
+                ? getString(R.string.notification_speed, speedKmh) : getString(R.string.stationary_active);
+        int remaining = getRemainingTimerSeconds();
+        if (remaining >= 0) text += " · " + getString(R.string.timer_remaining, remaining / 60, remaining % 60);
         return builder.setContentTitle(getString(R.string.notification_title))
-                .setContentText(getString(R.string.notification_speed, speedKmh))
+                .setContentText(text)
                 .setSmallIcon(R.drawable.ic_route_notification)
                 .setContentIntent(open)
                 .addAction(new Notification.Action.Builder(

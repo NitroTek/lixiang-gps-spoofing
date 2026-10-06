@@ -1,4 +1,4 @@
-package com.github.fakegps.route;
+package kz.prounbound.route;
 
 import android.content.res.AssetManager;
 import android.util.Xml;

@@ -1,4 +1,4 @@
-package com.github.fakegps.ui;
+package kz.prounbound.ui;
 
 import android.Manifest;
 import android.app.Activity;
@@ -19,18 +19,24 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.Process;
 import android.provider.Settings;
+import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.Spinner;
+import android.widget.Switch;
 import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.github.fakegps.FakeLocationService;
-import com.github.fakegps.R;
-import com.github.fakegps.route.LoopRoute;
-import com.github.fakegps.route.RoutePlayback;
+import kz.prounbound.FakeLocationService;
+import kz.prounbound.R;
+import kz.prounbound.route.LoopRoute;
+import kz.prounbound.route.RoutePlayback;
+import kz.prounbound.spoofing.SpoofingSession;
 
-/** One screen, one route, one speed control. */
+/** Mode and optional auto-stop settings on one screen. */
 public final class MainActivity extends Activity {
     private static final int REQUEST_LOCATION = 1;
     private static final int REQUEST_NOTIFICATIONS = 2;
@@ -45,12 +51,26 @@ public final class MainActivity extends Activity {
     private TextView coordinates;
     private ProgressBar routeProgress;
     private Button startStop;
+    private Spinner mode;
+    private Switch timerEnabled;
+    private SeekBar timerDuration;
+    private TextView timerLabel;
+    private TextView timerCountdown;
+    private TextView modeDescription;
+    private View speedControls;
+    private View timerControls;
+    private boolean syncingControls;
 
     private final ServiceConnection connection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder binder) {
             service = ((FakeLocationService.LocalBinder) binder).getService();
+            syncingControls = true;
             speed.setProgress(service.getSpeedKmh());
+            mode.setSelection(service.getMode());
+            timerEnabled.setChecked(service.isTimerEnabled());
+            timerDuration.setProgress(service.getTimerSeconds() - 1);
+            syncingControls = false;
             updateScreen();
         }
 
@@ -73,6 +93,46 @@ public final class MainActivity extends Activity {
         coordinates = findViewById(R.id.coordinates);
         routeProgress = findViewById(R.id.route_progress);
         startStop = findViewById(R.id.start_stop);
+        mode = findViewById(R.id.mode);
+        modeDescription = findViewById(R.id.mode_description);
+        speedControls = findViewById(R.id.speed_controls);
+        timerEnabled = findViewById(R.id.timer_enabled);
+        timerDuration = findViewById(R.id.timer_duration);
+        timerLabel = findViewById(R.id.timer_label);
+        timerCountdown = findViewById(R.id.timer_countdown);
+        timerControls = findViewById(R.id.timer_controls);
+        ArrayAdapter<CharSequence> modes = ArrayAdapter.createFromResource(this,
+                R.array.spoofing_modes, android.R.layout.simple_spinner_item);
+        modes.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        mode.setAdapter(modes);
+        SharedPreferences prefs = getSharedPreferences(FakeLocationService.PREFS, MODE_PRIVATE);
+        int savedMode = prefs.getInt(FakeLocationService.PREF_MODE, SpoofingSession.MODE_ROUTE);
+        mode.setSelection(SpoofingSession.isValidMode(savedMode) ? savedMode : SpoofingSession.MODE_ROUTE);
+        timerEnabled.setChecked(prefs.getBoolean(FakeLocationService.PREF_TIMER_ENABLED, false));
+        timerDuration.setProgress(Math.max(1, Math.min(SpoofingSession.MAX_TIMER_SECONDS,
+                prefs.getInt(FakeLocationService.PREF_TIMER_SECONDS, 60))) - 1);
+        mode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (syncingControls || service != null && service.isRunning()) return;
+                if (service != null) service.configureMode(position);
+                else prefs.edit().putInt(FakeLocationService.PREF_MODE, position).apply();
+                updateScreen();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+        timerEnabled.setOnCheckedChangeListener((button, checked) -> {
+            if (!syncingControls) saveTimerOptions();
+            updateScreen();
+        });
+        timerDuration.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                if (fromUser) saveTimerOptions();
+                updateTimerControls();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {}
+            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        });
+        updateScreen();
         int savedSpeed = getSharedPreferences(FakeLocationService.PREFS, MODE_PRIVATE)
                 .getInt(FakeLocationService.PREF_SPEED, RoutePlayback.DEFAULT_SPEED_KMH);
         speed.setProgress(savedSpeed);
@@ -129,23 +189,58 @@ public final class MainActivity extends Activity {
         }
     };
 
+    private void saveTimerOptions() {
+        int seconds = timerDuration.getProgress() + 1;
+        if (service != null) service.configureTimer(timerEnabled.isChecked(), seconds);
+        else getSharedPreferences(FakeLocationService.PREFS, MODE_PRIVATE).edit()
+                .putBoolean(FakeLocationService.PREF_TIMER_ENABLED, timerEnabled.isChecked())
+                .putInt(FakeLocationService.PREF_TIMER_SECONDS, seconds).apply();
+    }
+
+    private void updateTimerControls() {
+        int seconds = timerDuration.getProgress() + 1;
+        timerLabel.setText(getString(R.string.timer_duration, seconds / 60, seconds % 60));
+        timerControls.setVisibility(timerEnabled.isChecked() ? View.VISIBLE : View.GONE);
+    }
+
     private void updateScreen() {
+        int selectedMode = service == null ? mode.getSelectedItemPosition() : service.getMode();
+        boolean stationary = selectedMode == SpoofingSession.MODE_STATIONARY_CHINA;
+        speedControls.setVisibility(stationary ? View.GONE : View.VISIBLE);
+        routeProgress.setVisibility(stationary ? View.GONE : View.VISIBLE);
+        progressLabel.setVisibility(stationary ? View.GONE : View.VISIBLE);
+        modeDescription.setText(stationary ? R.string.stationary_description : R.string.route_description);
+        updateTimerControls();
         if (service == null) return;
         boolean running = service.isRunning();
-        startStop.setEnabled(service.isRouteLoaded());
+        mode.setEnabled(!running);
+        timerEnabled.setEnabled(!running);
+        timerDuration.setEnabled(!running);
+        if (mode.getSelectedItemPosition() != selectedMode) mode.setSelection(selectedMode);
+        startStop.setEnabled(service.isReady());
         startStop.setText(running ? R.string.stop : R.string.start);
         String error = service.getError();
         if (error != null) status.setText(error);
-        else status.setText(!running ? R.string.idle
+        else status.setText(!running
+                ? service.isTimerFinished() ? R.string.timer_finished : R.string.idle
+                : stationary ? R.string.stationary_active
                 : service.getSpeedKmh() == 0 ? R.string.paused : R.string.running);
+        int remaining = service.getRemainingTimerSeconds();
+        timerCountdown.setVisibility(remaining >= 0 ? View.VISIBLE : View.GONE);
+        if (remaining >= 0) timerCountdown.setText(getString(R.string.timer_remaining,
+                remaining / 60, remaining % 60));
         LoopRoute.Position position = service.getPosition();
         if (position != null) {
-            double length = service.getRouteLengthMeters();
-            routeProgress.setProgress((int) (position.offsetMeters / length * 1000));
-            progressLabel.setText(getString(R.string.progress, service.getCompletedLaps() + 1,
-                    position.offsetMeters / 1000, length / 1000));
+            if (!stationary) {
+                double length = service.getRouteLengthMeters();
+                if (length > 0) {
+                    routeProgress.setProgress((int) (position.offsetMeters / length * 1000));
+                    progressLabel.setText(getString(R.string.progress, service.getCompletedLaps() + 1,
+                            position.offsetMeters / 1000, length / 1000));
+                }
+            }
             coordinates.setText(getString(R.string.coordinates, position.latitude, position.longitude));
-        }
+        } else coordinates.setText(stationary ? R.string.stationary_pending : R.string.loading);
     }
 
     private boolean hasLocationPermission() {
@@ -200,7 +295,10 @@ public final class MainActivity extends Activity {
         pendingStart = false;
         Intent intent = new Intent(this, FakeLocationService.class)
                 .setAction(FakeLocationService.ACTION_START)
-                .putExtra(FakeLocationService.EXTRA_SPEED, speed.getProgress());
+                .putExtra(FakeLocationService.EXTRA_SPEED, speed.getProgress())
+                .putExtra(FakeLocationService.EXTRA_MODE, mode.getSelectedItemPosition())
+                .putExtra(FakeLocationService.EXTRA_TIMER_SECONDS,
+                        timerEnabled.isChecked() ? timerDuration.getProgress() + 1 : 0);
         try {
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
             else startService(intent);

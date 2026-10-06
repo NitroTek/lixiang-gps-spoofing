@@ -1,4 +1,4 @@
-package com.github.fakegps;
+package kz.prounbound;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -10,7 +10,7 @@ import android.os.Build;
 import android.os.SystemClock;
 import android.util.Log;
 
-import com.github.fakegps.route.LoopRoute;
+import kz.prounbound.route.LoopRoute;
 
 import java.util.ArrayList;
 import java.util.List;

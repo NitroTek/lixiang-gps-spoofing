@@ -1,18 +1,18 @@
 <resources>
-    <string name="app_name">FakeGPS G30</string>
+    <string name="app_name">ProUnbound</string>
     <string name="route_title">Кольцо по G30</string>
     <string name="route_description">57,07 км · движение по кругу\nСтарт: 43.039262, 90.718605</string>
     <string name="speed_label">Скорость: %1$d км/ч</string>
     <string name="speed_hint">0 км/ч — остановка движения. Скорость можно менять во время поездки.</string>
-    <string name="start">Запустить маршрут</string>
+    <string name="start">Запустить подмену GPS</string>
     <string name="stop">Остановить</string>
-    <string name="idle">Маршрут остановлен</string>
-    <string name="loading">Загрузка маршрута…</string>
+    <string name="idle">Подмена GPS отключена</string>
+    <string name="loading">Загрузка…</string>
     <string name="running">Движение по маршруту</string>
     <string name="paused">Движение приостановлено · GPS активен</string>
     <string name="progress">Круг %1$d · %2$.2f из %3$.2f км</string>
     <string name="coordinates">%1$.6f, %2$.6f</string>
-    <string name="setup_hint">Перед первым запуском выберите FakeGPS G30 в настройках разработчика → «Приложение для фиктивных местоположений».</string>
+    <string name="setup_hint">Перед первым запуском выберите ProUnbound в настройках разработчика → «Приложение для фиктивных местоположений».</string>
     <string name="mock_title">Выберите приложение для подмены GPS</string>
     <string name="settings">Открыть настройки</string>
     <string name="location_title">Включите геолокацию</string>
@@ -21,9 +21,25 @@
     <string name="permission_settings">Разрешение отключено. Откройте настройки приложения и разрешите доступ к местоположению.</string>
     <string name="settings_unavailable">Откройте настройки Android вручную.</string>
     <string name="route_error">Не удалось загрузить встроенный маршрут.</string>
-    <string name="mock_error">Не удалось запустить подмену GPS. Проверьте выбор FakeGPS G30 в настройках разработчика.</string>
+    <string name="mock_error">Не удалось запустить подмену GPS. Проверьте выбор ProUnbound в настройках разработчика.</string>
     <string name="service_error">Не удалось запустить маршрут. Проверьте разрешения и геолокацию.</string>
-    <string name="channel_name">Маршрут G30</string>
-    <string name="notification_title">FakeGPS · кольцо G30</string>
+    <string name="channel_name">Подмена GPS</string>
+    <string name="notification_title">ProUnbound</string>
     <string name="notification_speed">Скорость %1$d км/ч · маршрут повторяется</string>
+    <string name="mode_label">Режим работы</string>
+    <string name="mode_route">Движение по кольцу G30</string>
+    <string name="mode_china">Стоять в случайной точке Китая</string>
+    <string-array name="spoofing_modes">
+        <item>@string/mode_route</item>
+        <item>@string/mode_china</item>
+    </string-array>
+    <string name="stationary_description">При каждом запуске выбирается новая точка в материковом Китае. Координата остаётся неизменной до остановки.</string>
+    <string name="stationary_active">Стоим в случайной точке Китая · 0 км/ч</string>
+    <string name="stationary_pending">Точка будет выбрана при запуске</string>
+    <string name="timer_toggle">Автоматически отключить подмену GPS</string>
+    <string name="timer_duration">Отключить через %1$d:%2$02d</string>
+    <string name="timer_remaining">До отключения: %1$d:%2$02d</string>
+    <string name="timer_hint">От 1 секунды до 5 минут. Таймер отсчитывается с запуска; по истечении времени подмена GPS полностью отключается.</string>
+    <string name="timer_finished">Время истекло · подмена GPS отключена</string>
+    <string name="china_error">Не удалось загрузить границу Китая.</string>
 </resources>

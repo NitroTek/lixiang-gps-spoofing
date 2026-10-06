@@ -1,11 +1,11 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "com.github.fakegps"
+    namespace "kz.prounbound"
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.github.fakegps"
+        applicationId "kz.prounbound"
         minSdk 21
         targetSdk 34
         versionCode 3
@@ -22,7 +22,7 @@ android {
 
     applicationVariants.configureEach { variant ->
         variant.outputs.configureEach { output ->
-            outputFileName = "FakeGPS_v${variant.versionName}.apk"
+            outputFileName = "ProUnbound.apk"
         }
     }
 

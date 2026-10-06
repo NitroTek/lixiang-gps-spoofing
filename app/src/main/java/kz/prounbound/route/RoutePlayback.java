@@ -1,4 +1,4 @@
-package com.github.fakegps.route;
+package kz.prounbound.route;
 
 /** Movement uses monotonic elapsed time, independent of the GPS update interval. */
 public final class RoutePlayback {

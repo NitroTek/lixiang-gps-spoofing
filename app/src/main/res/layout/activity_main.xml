@@ -4,20 +4,41 @@
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="vertical" android:padding="24dp">
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="@string/route_title" android:textColor="#152236" android:textSize="30sp" android:textStyle="bold" />
+            android:text="@string/app_name" android:textColor="#152236" android:textSize="30sp" android:textStyle="bold" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="24dp" android:text="@string/mode_label" android:labelFor="@+id/mode" android:textSize="17sp" />
+        <Spinner android:id="@id/mode" android:layout_width="match_parent" android:layout_height="56dp"
+            android:spinnerMode="dropdown" />
+        <TextView android:id="@+id/mode_description" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="12dp" android:text="@string/route_description" android:textSize="17sp" />
+        <LinearLayout android:id="@+id/speed_controls" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="vertical">
         <TextView android:id="@+id/speed_label" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="32dp" android:textSize="24sp" android:textStyle="bold" />
         <SeekBar android:id="@+id/speed" android:layout_width="match_parent" android:layout_height="64dp"
             android:contentDescription="@string/speed_hint" android:max="200" android:progress="90" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="@string/speed_hint" android:textSize="15sp" />
+        </LinearLayout>
+        <Switch android:id="@+id/timer_enabled" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="56dp" android:layout_marginTop="24dp" android:text="@string/timer_toggle"
+            android:textSize="17sp" />
+        <LinearLayout android:id="@+id/timer_controls" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+            <TextView android:id="@+id/timer_label" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="12dp" android:textSize="20sp" />
+            <SeekBar android:id="@+id/timer_duration" android:layout_width="match_parent" android:layout_height="56dp"
+                android:max="299" android:progress="59" android:contentDescription="@string/timer_hint" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/timer_hint" android:textSize="15sp" />
+        </LinearLayout>
         <Button android:id="@+id/start_stop" android:layout_width="match_parent" android:layout_height="64dp"
             android:layout_marginTop="24dp" android:enabled="false" android:text="@string/start" />
         <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="24dp" android:accessibilityLiveRegion="polite"
             android:text="@string/loading" android:textSize="18sp" />
+        <TextView android:id="@+id/timer_countdown" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:textSize="18sp" android:visibility="gone" />
         <ProgressBar android:id="@+id/route_progress" style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="12dp" android:max="1000" />
