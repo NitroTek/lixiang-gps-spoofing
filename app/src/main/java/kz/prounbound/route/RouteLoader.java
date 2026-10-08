@@ -14,8 +14,8 @@ import java.util.List;
 public final class RouteLoader {
     private RouteLoader() {}
 
-    public static LoopRoute load(AssetManager assets) throws IOException {
-        try (InputStream input = assets.open("g30-loop.gpx")) {
+    public static LoopRoute load(AssetManager assets, RouteCatalog.Entry entry) throws IOException {
+        try (InputStream input = assets.open(entry.assetName())) {
             XmlPullParser parser = Xml.newPullParser();
             parser.setInput(input, "UTF-8");
             List<double[]> points = new ArrayList<>();
@@ -32,7 +32,7 @@ public final class RouteLoader {
                             Double.parseDouble(parser.getAttributeValue(null, "lon"))});
                 }
             }
-            return new LoopRoute(points.toArray(new double[0][]));
+            return new LoopRoute(points.toArray(new double[0][]), entry.closed);
         } catch (XmlPullParserException | IllegalArgumentException e) {
             throw new IOException("Invalid embedded route", e);
         }

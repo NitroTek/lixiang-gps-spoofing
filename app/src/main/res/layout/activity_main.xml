@@ -9,6 +9,16 @@
             android:layout_marginTop="24dp" android:text="@string/mode_label" android:labelFor="@+id/mode" android:textSize="17sp" />
         <Spinner android:id="@id/mode" android:layout_width="match_parent" android:layout_height="56dp"
             android:spinnerMode="dropdown" />
+        <LinearLayout android:id="@+id/route_controls" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="vertical">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="12dp" android:text="@string/route_label"
+                android:labelFor="@+id/route_choice" android:textSize="17sp" />
+            <Spinner android:id="@id/route_choice" android:layout_width="match_parent"
+                android:layout_height="56dp" android:spinnerMode="dropdown" />
+            <Button android:id="@+id/random_sprint" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="@string/random_sprint" />
+        </LinearLayout>
         <TextView android:id="@+id/mode_description" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="12dp" android:text="@string/route_description" android:textSize="17sp" />
         <LinearLayout android:id="@+id/speed_controls" android:layout_width="match_parent"
@@ -20,6 +30,14 @@
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="@string/speed_hint" android:textSize="15sp" />
         </LinearLayout>
+        <TextView android:id="@+id/accuracy_label" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:layout_marginTop="24dp"
+            android:textSize="20sp" android:labelFor="@+id/accuracy" />
+        <SeekBar android:id="@id/accuracy" android:layout_width="match_parent"
+            android:layout_height="56dp" android:max="5" android:progress="5"
+            android:contentDescription="@string/accuracy_hint" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/accuracy_hint" android:textSize="15sp" />
         <Switch android:id="@+id/timer_enabled" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:minHeight="56dp" android:layout_marginTop="24dp" android:text="@string/timer_toggle"
             android:textSize="17sp" />

@@ -9,8 +9,14 @@ public final class LoopRoute {
     private static final double EARTH_RADIUS_METERS = 6_371_000;
     private final double[][] points;
     private final double[] distances;
+    private final boolean closed;
 
     public LoopRoute(double[][] coordinates) {
+        this(coordinates, true);
+    }
+
+    public LoopRoute(double[][] coordinates, boolean closed) {
+        this.closed = closed;
         List<double[]> unique = new ArrayList<>();
         for (double[] point : coordinates) {
             if (point.length != 2 || Double.isNaN(point[0]) || Double.isInfinite(point[0])
@@ -22,12 +28,12 @@ public final class LoopRoute {
                 unique.add(point.clone());
             }
         }
-        if (unique.size() < 3
-                || distance(unique.get(0), unique.get(unique.size() - 1)) > 0.01) {
+        if (unique.size() < (closed ? 3 : 2)
+                || closed && distance(unique.get(0), unique.get(unique.size() - 1)) > 0.01) {
             throw new IllegalArgumentException("Track must be a closed loop");
         }
         points = unique.toArray(new double[0][]);
-        points[points.length - 1] = points[0].clone();
+        if (closed) points[points.length - 1] = points[0].clone();
         distances = new double[points.length];
         for (int i = 1; i < points.length; i++) {
             distances[i] = distances[i - 1] + distance(points[i - 1], points[i]);
@@ -37,6 +43,8 @@ public final class LoopRoute {
     public double lengthMeters() {
         return distances[distances.length - 1];
     }
+
+    public boolean isClosed() { return closed; }
 
     public static Position stationaryAt(double latitude, double longitude) {
         if (Double.isNaN(latitude) || Double.isInfinite(latitude)
@@ -51,7 +59,7 @@ public final class LoopRoute {
         if (Double.isNaN(traveledMeters) || Double.isInfinite(traveledMeters) || traveledMeters < 0) {
             throw new IllegalArgumentException("Invalid traveled distance");
         }
-        double offset = traveledMeters % lengthMeters();
+        double offset = closed ? traveledMeters % lengthMeters() : Math.min(traveledMeters, lengthMeters());
         int found = Arrays.binarySearch(distances, offset);
         int segment = found >= 0 ? found : -found - 2;
         segment = Math.min(segment, points.length - 2);

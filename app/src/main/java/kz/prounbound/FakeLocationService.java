@@ -18,6 +18,7 @@ import android.util.Log;
 
 import kz.prounbound.route.LoopRoute;
 import kz.prounbound.route.RouteLoader;
+import kz.prounbound.route.RouteCatalog;
 import kz.prounbound.route.RoutePlayback;
 import kz.prounbound.ui.MainActivity;
 import kz.prounbound.spoofing.ChinaRegion;
@@ -32,7 +33,13 @@ public final class FakeLocationService extends Service {
     public static final String ACTION_START = "kz.prounbound.START";
     public static final String ACTION_STOP = "kz.prounbound.STOP";
     public static final String EXTRA_SPEED = "speed_kmh";
+    public static final String EXTRA_ACCURACY = "accuracy_meters";
+    public static final String PREF_ACCURACY = "accuracy_meters";
+    public static final int DEFAULT_ACCURACY_METERS = 5;
+    public static final int MAX_ACCURACY_METERS = 5;
     public static final String EXTRA_MODE = "mode";
+    public static final String EXTRA_ROUTE_ID = "route_id";
+    public static final String PREF_ROUTE_ID = "route_id";
     public static final String EXTRA_TIMER_SECONDS = "timer_seconds";
     public static final String PREF_MODE = "mode";
     public static final String PREF_TIMER_ENABLED = "timer_enabled";
@@ -46,6 +53,8 @@ public final class FakeLocationService extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final LocalBinder binder = new LocalBinder();
     private LoopRoute route;
+    private RouteCatalog.Entry selectedRoute;
+    private boolean routeFinished;
     private SpoofingSession session;
     private ChinaRegion china;
     private int mode;
@@ -58,6 +67,7 @@ public final class FakeLocationService extends Service {
     private long wakeLockRenewedAt;
     private boolean running;
     private int speedKmh;
+    private int accuracyMeters;
     private String error;
 
     public final class LocalBinder extends Binder {
@@ -69,6 +79,9 @@ public final class FakeLocationService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        accuracyMeters = Math.max(0, Math.min(MAX_ACCURACY_METERS,
+                getSharedPreferences(PREFS, MODE_PRIVATE)
+                        .getInt(PREF_ACCURACY, DEFAULT_ACCURACY_METERS)));
         speedKmh = Math.max(0, Math.min(RoutePlayback.MAX_SPEED_KMH,
                 getSharedPreferences(PREFS, MODE_PRIVATE)
                         .getInt(PREF_SPEED, RoutePlayback.DEFAULT_SPEED_KMH)));
@@ -78,11 +91,8 @@ public final class FakeLocationService extends Service {
         timerSeconds = Math.max(1, Math.min(SpoofingSession.MAX_TIMER_SECONDS,
                 getSharedPreferences(PREFS, MODE_PRIVATE).getInt(PREF_TIMER_SECONDS, 60)));
         publisher = new MockLocationPublisher(this);
-        try {
-            route = RouteLoader.load(getAssets());
-        } catch (IOException e) {
-            Log.e("ProUnbound", "Cannot load route", e);
-        }
+        configureRoute(getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getString(PREF_ROUTE_ID, "g30-loop"));
         try (InputStreamReader input = new InputStreamReader(
                 getAssets().open("china-mainland.csv"), "UTF-8")) {
             china = ChinaRegion.load(input);
@@ -102,6 +112,9 @@ public final class FakeLocationService extends Service {
         if (intent == null || ACTION_STOP.equals(intent.getAction())) {
             stopRoute();
         } else if (ACTION_START.equals(intent.getAction())) {
+            setAccuracyMeters(intent.getIntExtra(EXTRA_ACCURACY, accuracyMeters));
+            configureRoute(intent.getStringExtra(EXTRA_ROUTE_ID) == null ? selectedRoute.id
+                    : intent.getStringExtra(EXTRA_ROUTE_ID));
             startRoute(intent.getIntExtra(EXTRA_SPEED, speedKmh),
                     intent.getIntExtra(EXTRA_MODE, mode),
                     intent.getIntExtra(EXTRA_TIMER_SECONDS, timerEnabled ? timerSeconds : 0));
@@ -127,6 +140,7 @@ public final class FakeLocationService extends Service {
                 requestedTimerSeconds > 0 ? requestedTimerSeconds : timerSeconds);
         error = null;
         timerFinished = false;
+        routeFinished = false;
         try {
             setSpeedKmh(requestedSpeed);
             if (Build.VERSION.SDK_INT >= 29) {
@@ -167,8 +181,25 @@ public final class FakeLocationService extends Service {
         if (running) {
             try {
                 // The reported GPS speed changes immediately, without resetting position.
-                publisher.publish(session.position(), session.speedKmh());
+                publisher.publish(session.position(), session.speedKmh(), accuracyMeters);
+                if (checkRouteFinished()) return;
                 updateNotification();
+            } catch (RuntimeException e) {
+                fail(R.string.mock_error, e);
+            }
+        }
+    }
+
+    public int getAccuracyMeters() { return accuracyMeters; }
+
+    public void setAccuracyMeters(int value) {
+        if (value < 0 || value > MAX_ACCURACY_METERS) return;
+        accuracyMeters = value;
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(PREF_ACCURACY, value).apply();
+        if (running) checkAutoStop();
+        if (running) {
+            try {
+                publisher.publish(session.position(), session.speedKmh(), accuracyMeters);
             } catch (RuntimeException e) {
                 fail(R.string.mock_error, e);
             }
@@ -188,7 +219,8 @@ public final class FakeLocationService extends Service {
                     wakeLockRenewedAt = now;
                 }
                 session.advanceTo(now);
-                publisher.publish(session.position(), session.speedKmh());
+                publisher.publish(session.position(), session.speedKmh(), accuracyMeters);
+                if (checkRouteFinished()) return;
                 if (getRemainingTimerSeconds() != lastNotificationSeconds) updateNotification();
                 handler.postDelayed(this, UPDATE_INTERVAL_MS);
             } catch (RuntimeException e) {
@@ -201,6 +233,15 @@ public final class FakeLocationService extends Service {
         if (running && session.isExpired(SystemClock.elapsedRealtime())) {
             stopRoute();
             timerFinished = true;
+            return true;
+        }
+        return false;
+    }
+
+    private boolean checkRouteFinished() {
+        if (running && session.isRouteFinished()) {
+            stopRoute();
+            routeFinished = true;
             return true;
         }
         return false;
@@ -226,11 +267,33 @@ public final class FakeLocationService extends Service {
         if (mode != value) {
             session = null;
             timerFinished = false;
+            routeFinished = false;
             error = null;
         }
         mode = value;
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(PREF_MODE, value).apply();
     }
+
+    public void configureRoute(String id) {
+        if (running) return;
+        RouteCatalog.Entry next = RouteCatalog.find(id);
+        if (selectedRoute == next && route != null) return;
+        selectedRoute = next;
+        session = null;
+        timerFinished = false;
+        routeFinished = false;
+        error = null;
+        route = null;
+        try {
+            route = RouteLoader.load(getAssets(), selectedRoute);
+        } catch (IOException e) {
+            Log.e("ProUnbound", "Cannot load selected route", e);
+        }
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_ROUTE_ID, next.id).apply();
+    }
+
+    public String getRouteId() { return selectedRoute.id; }
+    public boolean isRouteFinished() { return routeFinished; }
 
     public void configureTimer(boolean enabled, int seconds) {
         if (running || seconds < 1 || seconds > SpoofingSession.MAX_TIMER_SECONDS) return;
@@ -252,6 +315,7 @@ public final class FakeLocationService extends Service {
     public void stopRoute() {
         running = false;
         timerFinished = false;
+        routeFinished = false;
         handler.removeCallbacks(updateLocation);
         handler.removeCallbacks(autoStop);
         if (publisher != null) publisher.stop();
@@ -309,7 +373,8 @@ public final class FakeLocationService extends Service {
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(this, CHANNEL_ID) : new Notification.Builder(this);
         String text = mode == SpoofingSession.MODE_ROUTE
-                ? getString(R.string.notification_speed, speedKmh) : getString(R.string.stationary_active);
+                ? selectedRoute.title + " · " + getString(R.string.notification_speed, speedKmh)
+                : getString(R.string.stationary_active);
         int remaining = getRemainingTimerSeconds();
         if (remaining >= 0) text += " · " + getString(R.string.timer_remaining, remaining / 60, remaining % 60);
         return builder.setContentTitle(getString(R.string.notification_title))

@@ -51,6 +51,7 @@ public final class SpoofingSession {
 
     public int speedKmh() { return playback == null ? 0 : playback.speedKmh(); }
     public long completedLaps() { return playback == null ? 0 : playback.completedLaps(); }
+    public boolean isRouteFinished() { return playback != null && playback.isFinished(); }
     public LoopRoute.Position position() { return playback == null ? stationaryPosition : playback.position(); }
     public boolean hasTimer() { return timerEnabled; }
     public boolean isExpired(long nowMillis) { return timerEnabled && nowMillis >= stopAtMillis; }

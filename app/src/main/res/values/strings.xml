@@ -25,9 +25,9 @@
     <string name="service_error">Не удалось запустить маршрут. Проверьте разрешения и геолокацию.</string>
     <string name="channel_name">Подмена GPS</string>
     <string name="notification_title">ProUnbound</string>
-    <string name="notification_speed">Скорость %1$d км/ч · маршрут повторяется</string>
+    <string name="notification_speed">Скорость %1$d км/ч</string>
     <string name="mode_label">Режим работы</string>
-    <string name="mode_route">Движение по кольцу G30</string>
+    <string name="mode_route">Движение по выбранному маршруту</string>
     <string name="mode_china">Стоять в случайной точке Китая</string>
     <string-array name="spoofing_modes">
         <item>@string/mode_route</item>
@@ -42,4 +42,13 @@
     <string name="timer_hint">От 1 секунды до 5 минут. Таймер отсчитывается с запуска; по истечении времени подмена GPS полностью отключается.</string>
     <string name="timer_finished">Время истекло · подмена GPS отключена</string>
     <string name="china_error">Не удалось загрузить границу Китая.</string>
+    <string name="route_label">Маршрут · G30 или один из 10 спринтов</string>
+    <string name="random_sprint">Выбрать случайный спринт</string>
+    <string name="sprint_description">%1$.2f км · платная %2$s · предел 120 км/ч по OSM\nПри выбранной скорости: %3$s. На финише подмена GPS отключается.\n© OpenStreetMap contributors</string>
+    <string name="duration_minutes">%1$.1f мин</string>
+    <string name="duration_paused">движение остановлено</string>
+    <string name="sprint_progress">Пройдено %1$.2f из %2$.2f км</string>
+    <string name="sprint_finished">Спринт завершён · подмена GPS отключена</string>
+    <string name="accuracy_label">Точность GPS: %1$d м</string>
+    <string name="accuracy_hint">Заявленная погрешность от 0 до 5 метров. Можно менять во время работы; координаты не смещаются.</string>
 </resources>

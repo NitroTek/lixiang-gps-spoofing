@@ -34,7 +34,10 @@ import kz.prounbound.FakeLocationService;
 import kz.prounbound.R;
 import kz.prounbound.route.LoopRoute;
 import kz.prounbound.route.RoutePlayback;
+import kz.prounbound.route.RouteCatalog;
 import kz.prounbound.spoofing.SpoofingSession;
+
+import java.util.Random;
 
 /** Mode and optional auto-stop settings on one screen. */
 public final class MainActivity extends Activity {
@@ -45,6 +48,8 @@ public final class MainActivity extends Activity {
     private boolean bound;
     private boolean pendingStart;
     private SeekBar speed;
+    private SeekBar accuracy;
+    private TextView accuracyLabel;
     private TextView speedLabel;
     private TextView status;
     private TextView progressLabel;
@@ -52,6 +57,10 @@ public final class MainActivity extends Activity {
     private ProgressBar routeProgress;
     private Button startStop;
     private Spinner mode;
+    private Spinner routeChoice;
+    private View routeControls;
+    private Button randomSprint;
+    private final Random random = new Random();
     private Switch timerEnabled;
     private SeekBar timerDuration;
     private TextView timerLabel;
@@ -67,7 +76,9 @@ public final class MainActivity extends Activity {
             service = ((FakeLocationService.LocalBinder) binder).getService();
             syncingControls = true;
             speed.setProgress(service.getSpeedKmh());
+            accuracy.setProgress(service.getAccuracyMeters());
             mode.setSelection(service.getMode());
+            routeChoice.setSelection(RouteCatalog.indexOf(service.getRouteId()));
             timerEnabled.setChecked(service.isTimerEnabled());
             timerDuration.setProgress(service.getTimerSeconds() - 1);
             syncingControls = false;
@@ -87,6 +98,8 @@ public final class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         speed = findViewById(R.id.speed);
+        accuracy = findViewById(R.id.accuracy);
+        accuracyLabel = findViewById(R.id.accuracy_label);
         speedLabel = findViewById(R.id.speed_label);
         status = findViewById(R.id.status);
         progressLabel = findViewById(R.id.progress_label);
@@ -94,6 +107,9 @@ public final class MainActivity extends Activity {
         routeProgress = findViewById(R.id.route_progress);
         startStop = findViewById(R.id.start_stop);
         mode = findViewById(R.id.mode);
+        routeChoice = findViewById(R.id.route_choice);
+        routeControls = findViewById(R.id.route_controls);
+        randomSprint = findViewById(R.id.random_sprint);
         modeDescription = findViewById(R.id.mode_description);
         speedControls = findViewById(R.id.speed_controls);
         timerEnabled = findViewById(R.id.timer_enabled);
@@ -105,7 +121,27 @@ public final class MainActivity extends Activity {
                 R.array.spoofing_modes, android.R.layout.simple_spinner_item);
         modes.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         mode.setAdapter(modes);
+        ArrayAdapter<String> routes = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, RouteCatalog.titles());
+        routes.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        routeChoice.setAdapter(routes);
         SharedPreferences prefs = getSharedPreferences(FakeLocationService.PREFS, MODE_PRIVATE);
+        accuracy.setProgress(Math.max(0, Math.min(FakeLocationService.MAX_ACCURACY_METERS,
+                prefs.getInt(FakeLocationService.PREF_ACCURACY, FakeLocationService.DEFAULT_ACCURACY_METERS))));
+        accuracyLabel.setText(getString(R.string.accuracy_label, accuracy.getProgress()));
+        accuracy.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
+                accuracyLabel.setText(getString(R.string.accuracy_label, value));
+                if (fromUser) {
+                    if (service != null) service.setAccuracyMeters(value);
+                    else prefs.edit().putInt(FakeLocationService.PREF_ACCURACY, value).apply();
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {}
+            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        });
+        routeChoice.setSelection(RouteCatalog.indexOf(prefs.getString(
+                FakeLocationService.PREF_ROUTE_ID, "g30-loop")));
         int savedMode = prefs.getInt(FakeLocationService.PREF_MODE, SpoofingSession.MODE_ROUTE);
         mode.setSelection(SpoofingSession.isValidMode(savedMode) ? savedMode : SpoofingSession.MODE_ROUTE);
         timerEnabled.setChecked(prefs.getBoolean(FakeLocationService.PREF_TIMER_ENABLED, false));
@@ -120,6 +156,18 @@ public final class MainActivity extends Activity {
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
+        routeChoice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (syncingControls || service != null && service.isRunning()) return;
+                String routeId = RouteCatalog.at(position).id;
+                if (service != null) service.configureRoute(routeId);
+                else prefs.edit().putString(FakeLocationService.PREF_ROUTE_ID, routeId).apply();
+                updateScreen();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+        randomSprint.setOnClickListener(view -> routeChoice.setSelection(RouteCatalog.indexOf(
+                RouteCatalog.randomSprint(random, RouteCatalog.at(routeChoice.getSelectedItemPosition()).id).id)));
         timerEnabled.setOnCheckedChangeListener((button, checked) -> {
             if (!syncingControls) saveTimerOptions();
             updateScreen();
@@ -206,23 +254,39 @@ public final class MainActivity extends Activity {
     private void updateScreen() {
         int selectedMode = service == null ? mode.getSelectedItemPosition() : service.getMode();
         boolean stationary = selectedMode == SpoofingSession.MODE_STATIONARY_CHINA;
+        int routeIndex = service == null ? routeChoice.getSelectedItemPosition()
+                : RouteCatalog.indexOf(service.getRouteId());
+        RouteCatalog.Entry entry = RouteCatalog.at(routeIndex);
+        routeControls.setVisibility(stationary ? View.GONE : View.VISIBLE);
         speedControls.setVisibility(stationary ? View.GONE : View.VISIBLE);
         routeProgress.setVisibility(stationary ? View.GONE : View.VISIBLE);
         progressLabel.setVisibility(stationary ? View.GONE : View.VISIBLE);
-        modeDescription.setText(stationary ? R.string.stationary_description : R.string.route_description);
+        if (stationary) modeDescription.setText(R.string.stationary_description);
+        else if (entry.closed) modeDescription.setText(R.string.route_description);
+        else {
+            double km = service == null ? 30 : service.getRouteLengthMeters() / 1000;
+            int kmh = speed.getProgress();
+            String duration = kmh == 0 ? getString(R.string.duration_paused)
+                    : getString(R.string.duration_minutes, km / kmh * 60);
+            modeDescription.setText(getString(R.string.sprint_description, km, entry.road, duration));
+        }
         updateTimerControls();
         if (service == null) return;
         boolean running = service.isRunning();
         mode.setEnabled(!running);
+        routeChoice.setEnabled(!running);
+        randomSprint.setEnabled(!running);
         timerEnabled.setEnabled(!running);
         timerDuration.setEnabled(!running);
         if (mode.getSelectedItemPosition() != selectedMode) mode.setSelection(selectedMode);
+        if (routeChoice.getSelectedItemPosition() != routeIndex) routeChoice.setSelection(routeIndex);
         startStop.setEnabled(service.isReady());
         startStop.setText(running ? R.string.stop : R.string.start);
         String error = service.getError();
         if (error != null) status.setText(error);
         else status.setText(!running
-                ? service.isTimerFinished() ? R.string.timer_finished : R.string.idle
+                ? service.isTimerFinished() ? R.string.timer_finished
+                    : service.isRouteFinished() ? R.string.sprint_finished : R.string.idle
                 : stationary ? R.string.stationary_active
                 : service.getSpeedKmh() == 0 ? R.string.paused : R.string.running);
         int remaining = service.getRemainingTimerSeconds();
@@ -235,8 +299,10 @@ public final class MainActivity extends Activity {
                 double length = service.getRouteLengthMeters();
                 if (length > 0) {
                     routeProgress.setProgress((int) (position.offsetMeters / length * 1000));
-                    progressLabel.setText(getString(R.string.progress, service.getCompletedLaps() + 1,
-                            position.offsetMeters / 1000, length / 1000));
+                    progressLabel.setText(entry.closed
+                            ? getString(R.string.progress, service.getCompletedLaps() + 1,
+                                position.offsetMeters / 1000, length / 1000)
+                            : getString(R.string.sprint_progress, position.offsetMeters / 1000, length / 1000));
                 }
             }
             coordinates.setText(getString(R.string.coordinates, position.latitude, position.longitude));
@@ -296,7 +362,10 @@ public final class MainActivity extends Activity {
         Intent intent = new Intent(this, FakeLocationService.class)
                 .setAction(FakeLocationService.ACTION_START)
                 .putExtra(FakeLocationService.EXTRA_SPEED, speed.getProgress())
+                .putExtra(FakeLocationService.EXTRA_ACCURACY, accuracy.getProgress())
                 .putExtra(FakeLocationService.EXTRA_MODE, mode.getSelectedItemPosition())
+                .putExtra(FakeLocationService.EXTRA_ROUTE_ID,
+                        RouteCatalog.at(routeChoice.getSelectedItemPosition()).id)
                 .putExtra(FakeLocationService.EXTRA_TIMER_SECONDS,
                         timerEnabled.isChecked() ? timerDuration.getProgress() + 1 : 0);
         try {

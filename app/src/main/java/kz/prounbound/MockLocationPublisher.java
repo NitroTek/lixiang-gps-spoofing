@@ -55,14 +55,14 @@ final class MockLocationPublisher {
                 false, true, true, Criteria.POWER_LOW, Criteria.ACCURACY_FINE);
     }
 
-    void publish(LoopRoute.Position position, int speedKmh) {
+    void publish(LoopRoute.Position position, int speedKmh, int accuracyMeters) {
         long now = System.currentTimeMillis();
         long elapsed = SystemClock.elapsedRealtimeNanos();
         for (String provider : providers) {
             Location location = new Location(provider);
             location.setLatitude(position.latitude);
             location.setLongitude(position.longitude);
-            location.setAccuracy(5);
+            location.setAccuracy(accuracyMeters);
             location.setSpeed(speedKmh / 3.6f);
             location.setBearing(position.bearing);
             location.setTime(now);

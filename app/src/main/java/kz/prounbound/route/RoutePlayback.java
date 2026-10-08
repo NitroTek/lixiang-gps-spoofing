@@ -21,6 +21,7 @@ public final class RoutePlayback {
             throw new IllegalArgumentException("Time must be monotonic");
         }
         traveledMeters += (nowMillis - previousMillis) / 1000.0 * speedKmh / 3.6;
+        if (!route.isClosed()) traveledMeters = Math.min(traveledMeters, route.lengthMeters());
         previousMillis = nowMillis;
     }
 
@@ -35,7 +36,11 @@ public final class RoutePlayback {
     }
 
     public long completedLaps() {
-        return (long) Math.floor(traveledMeters / route.lengthMeters());
+        return route.isClosed() ? (long) Math.floor(traveledMeters / route.lengthMeters()) : 0;
+    }
+
+    public boolean isFinished() {
+        return !route.isClosed() && traveledMeters >= route.lengthMeters();
     }
 
     public LoopRoute.Position position() {
