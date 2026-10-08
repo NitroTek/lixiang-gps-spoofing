@@ -31,6 +31,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import kz.prounbound.FakeLocationService;
+import kz.prounbound.GpsAccuracy;
 import kz.prounbound.R;
 import kz.prounbound.route.LoopRoute;
 import kz.prounbound.route.RoutePlayback;
@@ -41,6 +42,10 @@ import java.util.Random;
 
 /** Mode and optional auto-stop settings on one screen. */
 public final class MainActivity extends Activity {
+    // Temporarily hide advanced controls without removing their implementation.
+    private static final boolean SIMPLE_UI = true;
+    private static final int SIMPLE_TIMER_SECONDS = 20;
+    private String lastShownError;
     private static final int REQUEST_LOCATION = 1;
     private static final int REQUEST_NOTIFICATIONS = 2;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -49,11 +54,13 @@ public final class MainActivity extends Activity {
     private boolean pendingStart;
     private SeekBar speed;
     private SeekBar accuracy;
+    private final SeekBar[] extraAccuracy = new SeekBar[GpsAccuracy.values().length];
     private TextView accuracyLabel;
     private TextView speedLabel;
     private TextView status;
     private TextView progressLabel;
     private TextView coordinates;
+    private TextView altitude;
     private ProgressBar routeProgress;
     private Button startStop;
     private Spinner mode;
@@ -74,9 +81,16 @@ public final class MainActivity extends Activity {
         @Override
         public void onServiceConnected(ComponentName name, IBinder binder) {
             service = ((FakeLocationService.LocalBinder) binder).getService();
+            if (SIMPLE_UI && !service.isRunning()) {
+                service.configureMode(SpoofingSession.MODE_ROUTE);
+                service.configureTimer(true, SIMPLE_TIMER_SECONDS);
+            }
             syncingControls = true;
             speed.setProgress(service.getSpeedKmh());
             accuracy.setProgress(service.getAccuracyMeters());
+            for (GpsAccuracy setting : GpsAccuracy.values()) {
+                extraAccuracy[setting.ordinal()].setProgress(service.getAccuracyProgress(setting));
+            }
             mode.setSelection(service.getMode());
             routeChoice.setSelection(RouteCatalog.indexOf(service.getRouteId()));
             timerEnabled.setChecked(service.isTimerEnabled());
@@ -97,6 +111,10 @@ public final class MainActivity extends Activity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        findViewById(R.id.advanced_controls).setVisibility(SIMPLE_UI ? View.GONE : View.VISIBLE);
+        findViewById(R.id.details_controls).setVisibility(SIMPLE_UI ? View.GONE : View.VISIBLE);
+        findViewById(R.id.app_title).setVisibility(SIMPLE_UI ? View.GONE : View.VISIBLE);
+        findViewById(R.id.timer_settings).setVisibility(SIMPLE_UI ? View.GONE : View.VISIBLE);
         speed = findViewById(R.id.speed);
         accuracy = findViewById(R.id.accuracy);
         accuracyLabel = findViewById(R.id.accuracy_label);
@@ -104,6 +122,7 @@ public final class MainActivity extends Activity {
         status = findViewById(R.id.status);
         progressLabel = findViewById(R.id.progress_label);
         coordinates = findViewById(R.id.coordinates);
+        altitude = findViewById(R.id.altitude);
         routeProgress = findViewById(R.id.route_progress);
         startStop = findViewById(R.id.start_stop);
         mode = findViewById(R.id.mode);
@@ -126,6 +145,14 @@ public final class MainActivity extends Activity {
         routes.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         routeChoice.setAdapter(routes);
         SharedPreferences prefs = getSharedPreferences(FakeLocationService.PREFS, MODE_PRIVATE);
+        bindAccuracyControl(GpsAccuracy.ALTITUDE, R.id.vertical_accuracy,
+                R.id.vertical_accuracy_label, R.string.vertical_accuracy_label, prefs);
+        bindAccuracyControl(GpsAccuracy.SPEED, R.id.speed_accuracy,
+                R.id.speed_accuracy_label, R.string.speed_accuracy_label, prefs);
+        bindAccuracyControl(GpsAccuracy.BEARING, R.id.bearing_accuracy,
+                R.id.bearing_accuracy_label, R.string.bearing_accuracy_label, prefs);
+        findViewById(R.id.extra_accuracy_hint).setVisibility(
+                Build.VERSION.SDK_INT < 26 ? View.VISIBLE : View.GONE);
         accuracy.setProgress(Math.max(0, Math.min(FakeLocationService.MAX_ACCURACY_METERS,
                 prefs.getInt(FakeLocationService.PREF_ACCURACY, FakeLocationService.DEFAULT_ACCURACY_METERS))));
         accuracyLabel.setText(getString(R.string.accuracy_label, accuracy.getProgress()));
@@ -143,10 +170,12 @@ public final class MainActivity extends Activity {
         routeChoice.setSelection(RouteCatalog.indexOf(prefs.getString(
                 FakeLocationService.PREF_ROUTE_ID, "g30-loop")));
         int savedMode = prefs.getInt(FakeLocationService.PREF_MODE, SpoofingSession.MODE_ROUTE);
-        mode.setSelection(SpoofingSession.isValidMode(savedMode) ? savedMode : SpoofingSession.MODE_ROUTE);
-        timerEnabled.setChecked(prefs.getBoolean(FakeLocationService.PREF_TIMER_ENABLED, false));
-        timerDuration.setProgress(Math.max(1, Math.min(SpoofingSession.MAX_TIMER_SECONDS,
-                prefs.getInt(FakeLocationService.PREF_TIMER_SECONDS, 60))) - 1);
+        mode.setSelection(!SIMPLE_UI && SpoofingSession.isValidMode(savedMode)
+                ? savedMode : SpoofingSession.MODE_ROUTE);
+        timerEnabled.setChecked(SIMPLE_UI || prefs.getBoolean(FakeLocationService.PREF_TIMER_ENABLED, false));
+        timerDuration.setProgress((SIMPLE_UI ? SIMPLE_TIMER_SECONDS
+                : Math.max(1, Math.min(SpoofingSession.MAX_TIMER_SECONDS,
+                    prefs.getInt(FakeLocationService.PREF_TIMER_SECONDS, SIMPLE_TIMER_SECONDS)))) - 1);
         mode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 if (syncingControls || service != null && service.isRunning()) return;
@@ -245,6 +274,28 @@ public final class MainActivity extends Activity {
                 .putInt(FakeLocationService.PREF_TIMER_SECONDS, seconds).apply();
     }
 
+    private void bindAccuracyControl(GpsAccuracy setting, int sliderId, int labelId,
+                                     int textId, SharedPreferences prefs) {
+        SeekBar slider = findViewById(sliderId);
+        TextView label = findViewById(labelId);
+        extraAccuracy[setting.ordinal()] = slider;
+        slider.setMax(setting.maxProgress);
+        slider.setProgress(setting.clamp(prefs.getInt(setting.key, setting.defaultProgress)));
+        label.setText(getString(textId, setting.value(slider.getProgress())));
+        slider.setEnabled(Build.VERSION.SDK_INT >= 26);
+        slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                label.setText(getString(textId, setting.value(progress)));
+                if (fromUser) {
+                    if (service != null) service.setAccuracyProgress(setting, progress);
+                    else prefs.edit().putInt(setting.key, progress).apply();
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {}
+            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        });
+    }
+
     private void updateTimerControls() {
         int seconds = timerDuration.getProgress() + 1;
         timerLabel.setText(getString(R.string.timer_duration, seconds / 60, seconds % 60));
@@ -283,6 +334,10 @@ public final class MainActivity extends Activity {
         startStop.setEnabled(service.isReady());
         startStop.setText(running ? R.string.stop : R.string.start);
         String error = service.getError();
+        if (SIMPLE_UI && error != null && !error.equals(lastShownError)) {
+            Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+        }
+        lastShownError = error;
         if (error != null) status.setText(error);
         else status.setText(!running
                 ? service.isTimerFinished() ? R.string.timer_finished
@@ -290,10 +345,14 @@ public final class MainActivity extends Activity {
                 : stationary ? R.string.stationary_active
                 : service.getSpeedKmh() == 0 ? R.string.paused : R.string.running);
         int remaining = service.getRemainingTimerSeconds();
-        timerCountdown.setVisibility(remaining >= 0 ? View.VISIBLE : View.GONE);
+        timerCountdown.setVisibility(!SIMPLE_UI && remaining >= 0 ? View.VISIBLE : View.GONE);
         if (remaining >= 0) timerCountdown.setText(getString(R.string.timer_remaining,
                 remaining / 60, remaining % 60));
         LoopRoute.Position position = service.getPosition();
+        altitude.setVisibility(position != null && position.hasAltitude() ? View.VISIBLE : View.GONE);
+        if (position != null && position.hasAltitude()) {
+            altitude.setText(getString(R.string.altitude_label, position.altitudeMslMeters));
+        }
         if (position != null) {
             if (!stationary) {
                 double length = service.getRouteLengthMeters();
@@ -359,16 +418,24 @@ public final class MainActivity extends Activity {
             return;
         }
         pendingStart = false;
+        // Pick once after permission checks; each route, including G30, has equal probability.
+        RouteCatalog.Entry launchRoute = RouteCatalog.at(SIMPLE_UI
+                ? random.nextInt(RouteCatalog.size()) : routeChoice.getSelectedItemPosition());
         Intent intent = new Intent(this, FakeLocationService.class)
                 .setAction(FakeLocationService.ACTION_START)
                 .putExtra(FakeLocationService.EXTRA_SPEED, speed.getProgress())
                 .putExtra(FakeLocationService.EXTRA_ACCURACY, accuracy.getProgress())
-                .putExtra(FakeLocationService.EXTRA_MODE, mode.getSelectedItemPosition())
+                .putExtra(FakeLocationService.EXTRA_MODE,
+                        SIMPLE_UI ? SpoofingSession.MODE_ROUTE : mode.getSelectedItemPosition())
                 .putExtra(FakeLocationService.EXTRA_ROUTE_ID,
-                        RouteCatalog.at(routeChoice.getSelectedItemPosition()).id)
+                        launchRoute.id)
                 .putExtra(FakeLocationService.EXTRA_TIMER_SECONDS,
-                        timerEnabled.isChecked() ? timerDuration.getProgress() + 1 : 0);
+                        SIMPLE_UI ? SIMPLE_TIMER_SECONDS
+                                : timerEnabled.isChecked() ? timerDuration.getProgress() + 1 : 0);
         try {
+            for (GpsAccuracy setting : GpsAccuracy.values()) {
+                intent.putExtra(setting.key, extraAccuracy[setting.ordinal()].getProgress());
+            }
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
             else startService(intent);
         } catch (RuntimeException e) {

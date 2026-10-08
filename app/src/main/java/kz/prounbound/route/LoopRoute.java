@@ -4,19 +4,25 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** Closed, distance-indexed track. Coordinates are latitude, longitude. */
+/** Distance-indexed track with an optional offline terrain profile. */
 public final class LoopRoute {
     private static final double EARTH_RADIUS_METERS = 6_371_000;
     private final double[][] points;
     private final double[] distances;
     private final boolean closed;
+    private final TerrainProfile terrain;
 
     public LoopRoute(double[][] coordinates) {
         this(coordinates, true);
     }
 
     public LoopRoute(double[][] coordinates, boolean closed) {
+        this(coordinates, closed, null);
+    }
+
+    public LoopRoute(double[][] coordinates, boolean closed, TerrainProfile terrain) {
         this.closed = closed;
+        this.terrain = terrain;
         List<double[]> unique = new ArrayList<>();
         for (double[] point : coordinates) {
             if (point.length != 2 || Double.isNaN(point[0]) || Double.isInfinite(point[0])
@@ -38,6 +44,17 @@ public final class LoopRoute {
         for (int i = 1; i < points.length; i++) {
             distances[i] = distances[i - 1] + distance(points[i - 1], points[i]);
         }
+        if (terrain != null && Math.abs(terrain.lengthMeters() - lengthMeters()) > .01) {
+            throw new IllegalArgumentException("Terrain profile does not match track length");
+        }
+        if (terrain != null && closed) {
+            TerrainProfile.Elevation start = terrain.elevationAt(0);
+            TerrainProfile.Elevation end = terrain.elevationAt(lengthMeters());
+            if (Math.abs(start.mslMeters-end.mslMeters) > .01
+                    || Math.abs(start.ellipsoidMeters-end.ellipsoidMeters) > .01) {
+                throw new IllegalArgumentException("Terrain profile is not closed");
+            }
+        }
     }
 
     public double lengthMeters() {
@@ -52,7 +69,7 @@ public final class LoopRoute {
                 || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
             throw new IllegalArgumentException("Invalid stationary coordinate");
         }
-        return new Position(latitude, longitude, 0, 0);
+        return new Position(latitude, longitude, 0, 0, null);
     }
 
     public Position positionAt(double traveledMeters) {
@@ -85,7 +102,8 @@ public final class LoopRoute {
                 Math.sin(lon2 - lon1) * Math.cos(lat2),
                 Math.cos(lat1) * Math.sin(lat2)
                         - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1)));
-        return new Position(latitude, longitude, (float) ((bearing + 360) % 360), offset);
+        return new Position(latitude, longitude, (float) ((bearing + 360) % 360), offset,
+                terrain == null ? null : terrain.elevationAt(offset));
     }
 
     private static double distance(double[] a, double[] b) {
@@ -102,12 +120,19 @@ public final class LoopRoute {
         public final double longitude;
         public final float bearing;
         public final double offsetMeters;
+        public final double altitudeMslMeters;
+        public final double altitudeEllipsoidMeters;
 
-        private Position(double latitude, double longitude, float bearing, double offsetMeters) {
+        public boolean hasAltitude() { return Double.isFinite(altitudeEllipsoidMeters); }
+
+        private Position(double latitude, double longitude, float bearing, double offsetMeters,
+                         TerrainProfile.Elevation elevation) {
             this.latitude = latitude;
             this.longitude = longitude;
             this.bearing = bearing;
             this.offsetMeters = offsetMeters;
+            altitudeMslMeters = elevation == null ? Double.NaN : elevation.mslMeters;
+            altitudeEllipsoidMeters = elevation == null ? Double.NaN : elevation.ellipsoidMeters;
         }
     }
 }

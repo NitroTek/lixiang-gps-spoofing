@@ -68,6 +68,7 @@ public final class FakeLocationService extends Service {
     private boolean running;
     private int speedKmh;
     private int accuracyMeters;
+    private final int[] extraAccuracy = new int[GpsAccuracy.values().length];
     private String error;
 
     public final class LocalBinder extends Binder {
@@ -79,6 +80,10 @@ public final class FakeLocationService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        for (GpsAccuracy setting : GpsAccuracy.values()) {
+            extraAccuracy[setting.ordinal()] = setting.clamp(getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .getInt(setting.key, setting.defaultProgress));
+        }
         accuracyMeters = Math.max(0, Math.min(MAX_ACCURACY_METERS,
                 getSharedPreferences(PREFS, MODE_PRIVATE)
                         .getInt(PREF_ACCURACY, DEFAULT_ACCURACY_METERS)));
@@ -112,6 +117,9 @@ public final class FakeLocationService extends Service {
         if (intent == null || ACTION_STOP.equals(intent.getAction())) {
             stopRoute();
         } else if (ACTION_START.equals(intent.getAction())) {
+            for (GpsAccuracy setting : GpsAccuracy.values()) {
+                setAccuracyProgress(setting, intent.getIntExtra(setting.key, getAccuracyProgress(setting)));
+            }
             setAccuracyMeters(intent.getIntExtra(EXTRA_ACCURACY, accuracyMeters));
             configureRoute(intent.getStringExtra(EXTRA_ROUTE_ID) == null ? selectedRoute.id
                     : intent.getStringExtra(EXTRA_ROUTE_ID));
@@ -181,7 +189,7 @@ public final class FakeLocationService extends Service {
         if (running) {
             try {
                 // The reported GPS speed changes immediately, without resetting position.
-                publisher.publish(session.position(), session.speedKmh(), accuracyMeters);
+                publishPosition();
                 if (checkRouteFinished()) return;
                 updateNotification();
             } catch (RuntimeException e) {
@@ -192,6 +200,29 @@ public final class FakeLocationService extends Service {
 
     public int getAccuracyMeters() { return accuracyMeters; }
 
+    public int getAccuracyProgress(GpsAccuracy setting) { return extraAccuracy[setting.ordinal()]; }
+
+    public void setAccuracyProgress(GpsAccuracy setting, int progress) {
+        if (progress < 0 || progress > setting.maxProgress) return;
+        extraAccuracy[setting.ordinal()] = progress;
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(setting.key, progress).apply();
+        if (running) checkAutoStop();
+        if (running) {
+            try {
+                publishPosition();
+            } catch (RuntimeException e) {
+                fail(R.string.mock_error, e);
+            }
+        }
+    }
+
+    private void publishPosition() {
+        publisher.publish(session.position(), session.speedKmh(), accuracyMeters,
+                GpsAccuracy.ALTITUDE.value(getAccuracyProgress(GpsAccuracy.ALTITUDE)),
+                GpsAccuracy.SPEED.value(getAccuracyProgress(GpsAccuracy.SPEED)),
+                GpsAccuracy.BEARING.value(getAccuracyProgress(GpsAccuracy.BEARING)));
+    }
+
     public void setAccuracyMeters(int value) {
         if (value < 0 || value > MAX_ACCURACY_METERS) return;
         accuracyMeters = value;
@@ -199,7 +230,7 @@ public final class FakeLocationService extends Service {
         if (running) checkAutoStop();
         if (running) {
             try {
-                publisher.publish(session.position(), session.speedKmh(), accuracyMeters);
+                publishPosition();
             } catch (RuntimeException e) {
                 fail(R.string.mock_error, e);
             }
@@ -219,7 +250,7 @@ public final class FakeLocationService extends Service {
                     wakeLockRenewedAt = now;
                 }
                 session.advanceTo(now);
-                publisher.publish(session.position(), session.speedKmh(), accuracyMeters);
+                publishPosition();
                 if (checkRouteFinished()) return;
                 if (getRemainingTimerSeconds() != lastNotificationSeconds) updateNotification();
                 handler.postDelayed(this, UPDATE_INTERVAL_MS);

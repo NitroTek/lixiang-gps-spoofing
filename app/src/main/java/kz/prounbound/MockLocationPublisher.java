@@ -30,6 +30,7 @@ final class MockLocationPublisher {
                     LocationManager.NETWORK_PROVIDER}) {
                 if (Build.VERSION.SDK_INT >= 31) {
                     manager.addTestProvider(provider, new ProviderProperties.Builder()
+                            .setHasAltitudeSupport(true)
                             .setHasBearingSupport(true)
                             .setHasSpeedSupport(true)
                             .setPowerUsage(ProviderProperties.POWER_USAGE_LOW)
@@ -52,19 +53,34 @@ final class MockLocationPublisher {
     @SuppressWarnings("deprecation")
     private void addLegacyProvider(String provider) {
         manager.addTestProvider(provider, false, false, false, false,
-                false, true, true, Criteria.POWER_LOW, Criteria.ACCURACY_FINE);
+                true, true, true, Criteria.POWER_LOW, Criteria.ACCURACY_FINE);
     }
 
-    void publish(LoopRoute.Position position, int speedKmh, int accuracyMeters) {
+    void publish(LoopRoute.Position position, int speedKmh, int accuracyMeters,
+                 float verticalAccuracyMeters, float speedAccuracyMps, float bearingAccuracyDegrees) {
         long now = System.currentTimeMillis();
         long elapsed = SystemClock.elapsedRealtimeNanos();
         for (String provider : providers) {
             Location location = new Location(provider);
             location.setLatitude(position.latitude);
             location.setLongitude(position.longitude);
+            if (position.hasAltitude()) {
+                location.setAltitude(position.altitudeEllipsoidMeters);
+                if (Build.VERSION.SDK_INT >= 26) {
+                    location.setVerticalAccuracyMeters(verticalAccuracyMeters);
+                }
+                if (Build.VERSION.SDK_INT >= 34) {
+                    location.setMslAltitudeMeters(position.altitudeMslMeters);
+                    location.setMslAltitudeAccuracyMeters(verticalAccuracyMeters);
+                }
+            }
             location.setAccuracy(accuracyMeters);
             location.setSpeed(speedKmh / 3.6f);
             location.setBearing(position.bearing);
+            if (Build.VERSION.SDK_INT >= 26) {
+                location.setSpeedAccuracyMetersPerSecond(speedAccuracyMps);
+                location.setBearingAccuracyDegrees(bearingAccuracyDegrees);
+            }
             location.setTime(now);
             location.setElapsedRealtimeNanos(elapsed);
             manager.setTestProviderLocation(provider, location);

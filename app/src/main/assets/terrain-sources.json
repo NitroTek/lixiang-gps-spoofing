@@ -1,0 +1,123 @@
+{
+  "downloaded": "2026-10-08",
+  "dataset": "SRTM 1 arc-second / srtm30m",
+  "terrain_api": "https://api.opentopodata.org/v1/srtm30m",
+  "terrain_datum": "EGM96 (approximately mean sea level)",
+  "geoid_url": "https://download.osgeo.org/proj/vdatum/egm96_15/egm96_15.gtx",
+  "geoid_sha256": "c02a6eb70a7a78efebe5adf3ade626eb75390e170bb8b3f36136a2c28f5326a0",
+  "geoid_interpolation": "bilinear, 15 arc-minute grid",
+  "conversion": "WGS84 ellipsoid height = EGM96 terrain height + geoid undulation",
+  "max_profile_spacing_meters": 100,
+  "routes": [
+    {
+      "id": "g30-loop",
+      "length_meters": 56962.95776290223,
+      "samples": 662,
+      "min_msl_meters": 491.0,
+      "max_msl_meters": 711.0,
+      "min_geoid_meters": -63.37325151811901,
+      "max_geoid_meters": -62.78820036527985,
+      "gpx_sha256": "d5d75b40b401678b2db5b6fa9247463ab73c9c64290e5d7d34a48876c593639f"
+    },
+    {
+      "id": "sprint-01",
+      "length_meters": 30000.00000287558,
+      "samples": 361,
+      "min_msl_meters": 24.0,
+      "max_msl_meters": 36.0,
+      "min_geoid_meters": -9.694464450339728,
+      "max_geoid_meters": -9.463493404875953,
+      "gpx_sha256": "a7432319de541becef5287dcfe3a245559b053dbb8536f97f3b6d2cf678d7b26"
+    },
+    {
+      "id": "sprint-02",
+      "length_meters": 29999.999990411907,
+      "samples": 381,
+      "min_msl_meters": 2.0,
+      "max_msl_meters": 17.0,
+      "min_geoid_meters": 3.648045862960681,
+      "max_geoid_meters": 4.665753280534638,
+      "gpx_sha256": "f96884a8cfdc8a5cd3f8141c5d9347366cca4305b6fc9f348a27f203b5750e04"
+    },
+    {
+      "id": "sprint-03",
+      "length_meters": 29999.999991756045,
+      "samples": 369,
+      "min_msl_meters": 30.0,
+      "max_msl_meters": 78.0,
+      "min_geoid_meters": -6.850652266269519,
+      "max_geoid_meters": -6.330036035757316,
+      "gpx_sha256": "889bf2504a9808d648834d43c431dd3c0570fe5befce3bfbc4ad4cd72a0f86d1"
+    },
+    {
+      "id": "sprint-04",
+      "length_meters": 29999.999999385618,
+      "samples": 368,
+      "min_msl_meters": 29.0,
+      "max_msl_meters": 81.0,
+      "min_geoid_meters": -2.8652870653023923,
+      "max_geoid_meters": -2.5675285648146433,
+      "gpx_sha256": "c91366a5f327fa07e05c92ab169ad2c9609c6538702c924d83dc0fe6710f4ff1"
+    },
+    {
+      "id": "sprint-05",
+      "length_meters": 29999.999996575647,
+      "samples": 379,
+      "min_msl_meters": 32.0,
+      "max_msl_meters": 41.0,
+      "min_geoid_meters": -8.098766517701815,
+      "max_geoid_meters": -7.412267105548426,
+      "gpx_sha256": "896bc2ed7f5f2b9a80b0148d60948640bc7276fae4d2667741939ad7ff62987e"
+    },
+    {
+      "id": "sprint-06",
+      "length_meters": 29999.9999987487,
+      "samples": 516,
+      "min_msl_meters": -1.0,
+      "max_msl_meters": 10.0,
+      "min_geoid_meters": 6.934712115706117,
+      "max_geoid_meters": 7.508483369753863,
+      "gpx_sha256": "aa637883f0fd479cc5923a6fe5d3c66c07821f6b4c509b6a4474df3465f3c137"
+    },
+    {
+      "id": "sprint-07",
+      "length_meters": 30000.00000595033,
+      "samples": 389,
+      "min_msl_meters": 2.0,
+      "max_msl_meters": 47.0,
+      "min_geoid_meters": -0.6205424599082869,
+      "max_geoid_meters": -0.46305194488527257,
+      "gpx_sha256": "e2510c4c9b54ab451ac5938b1f236b4a1cfc984efc7681d7a61d6c689fa1ff77"
+    },
+    {
+      "id": "sprint-08",
+      "length_meters": 30000.000003733072,
+      "samples": 361,
+      "min_msl_meters": 27.0,
+      "max_msl_meters": 37.0,
+      "min_geoid_meters": -11.10420805196083,
+      "max_geoid_meters": -10.133445112128337,
+      "gpx_sha256": "eed6f73a2192170ee645f4fb9d094ead9cd2d85f2dc7e1a77c83457be1c30f6b"
+    },
+    {
+      "id": "sprint-09",
+      "length_meters": 29999.999997549385,
+      "samples": 364,
+      "min_msl_meters": 41.0,
+      "max_msl_meters": 73.0,
+      "min_geoid_meters": -4.0192968679612635,
+      "max_geoid_meters": -2.8901304494542384,
+      "gpx_sha256": "a166de39a2678a6f04fa5b70af16b292a6df9faa35c5d44ed600fcb1fffafdda"
+    },
+    {
+      "id": "sprint-10",
+      "length_meters": 30000.0000016267,
+      "samples": 384,
+      "min_msl_meters": 8.0,
+      "max_msl_meters": 41.0,
+      "min_geoid_meters": 0.6499033976835942,
+      "max_geoid_meters": 1.595413175690625,
+      "gpx_sha256": "3a83119519615c28dd1ba0a06125ac9844f7a02889601935e8fede31aa357ffa"
+    }
+  ]
+}

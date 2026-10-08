@@ -1,10 +1,18 @@
 <resources>
     <string name="app_name">ProUnbound</string>
+    <string name="vertical_accuracy_title">Точность высоты</string>
+    <string name="speed_accuracy_title">Точность скорости</string>
+    <string name="bearing_accuracy_title">Точность направления</string>
+    <string name="vertical_accuracy_label">Точность высоты: %1$.0f м</string>
+    <string name="speed_accuracy_label">Точность скорости: %1$.1f м/с</string>
+    <string name="bearing_accuracy_label">Точность направления: %1$.1f°</string>
+    <string name="extra_accuracy_description">Заявленная погрешность от 0 до 5. Меньше значение — выше заявленная точность. Точность высоты передаётся при наличии высоты по рельефу.</string>
+    <string name="extra_accuracy_unsupported">Настройки точности высоты, скорости и направления доступны с Android 8.</string>
     <string name="route_title">Кольцо по G30</string>
     <string name="route_description">57,07 км · движение по кругу\nСтарт: 43.039262, 90.718605</string>
     <string name="speed_label">Скорость: %1$d км/ч</string>
     <string name="speed_hint">0 км/ч — остановка движения. Скорость можно менять во время поездки.</string>
-    <string name="start">Запустить подмену GPS</string>
+    <string name="start">Запуск</string>
     <string name="stop">Остановить</string>
     <string name="idle">Подмена GPS отключена</string>
     <string name="loading">Загрузка…</string>
@@ -51,4 +59,5 @@
     <string name="sprint_finished">Спринт завершён · подмена GPS отключена</string>
     <string name="accuracy_label">Точность GPS: %1$d м</string>
     <string name="accuracy_hint">Заявленная погрешность от 0 до 5 метров. Можно менять во время работы; координаты не смещаются.</string>
+    <string name="altitude_label">Высота по рельефу: %1$.1f м над уровнем моря</string>
 </resources>

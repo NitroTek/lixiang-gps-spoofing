@@ -8,6 +8,7 @@ import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,7 +33,12 @@ public final class RouteLoader {
                             Double.parseDouble(parser.getAttributeValue(null, "lon"))});
                 }
             }
-            return new LoopRoute(points.toArray(new double[0][]), entry.closed);
+            TerrainProfile terrain;
+            try (InputStreamReader profile = new InputStreamReader(
+                    assets.open(entry.id + "-altitude.csv"), "UTF-8")) {
+                terrain = TerrainProfile.load(profile);
+            }
+            return new LoopRoute(points.toArray(new double[0][]), entry.closed, terrain);
         } catch (XmlPullParserException | IllegalArgumentException e) {
             throw new IOException("Invalid embedded route", e);
         }
